@@ -277,7 +277,13 @@ docker compose down -v
 
 ## Database Configuration
 
-For local development, configure the connection string in:
+For local development, create your local settings file from the example:
+
+```bash
+cp src/FinTrack.Api/appsettings.Development.example.json src/FinTrack.Api/appsettings.Development.json
+```
+
+Then configure the connection string in:
 
 ```text
 src/FinTrack.Api/appsettings.Development.json
@@ -288,7 +294,7 @@ Example for PostgreSQL:
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=fintrack_db;Username=fintrack_user;Password=fintrack_password"
+    "DefaultConnection": "Host=localhost;Port=5432;Database=fintrack_db;Username=YOUR_DATABASE_USER;Password=YOUR_DATABASE_PASSWORD"
   }
 }
 ```
@@ -300,13 +306,13 @@ JWT settings example:
   "Jwt": {
     "Issuer": "FinTrack.Api",
     "Audience": "FinTrack.Client",
-    "Secret": "change-this-secret-key-to-a-long-secure-value",
+    "Secret": "CHANGE_THIS_TO_A_LONG_SECURE_SECRET_KEY",
     "ExpirationMinutes": 60
   }
 }
 ```
 
-For production, do not store secrets directly in `appsettings.json`. Use environment variables or a secret manager.
+`appsettings.Development.json` is intentionally ignored by Git because it can contain local credentials. For production, do not store secrets directly in `appsettings.json`. Use environment variables or a secret manager.
 
 ## Migrations
 
@@ -583,4 +589,3 @@ docs: update readme
 ## Author
 
 Developed as a backend portfolio project focused on clean architecture, API design, authentication, persistence and testing with the .NET ecosystem.
-

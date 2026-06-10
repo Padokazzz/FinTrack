@@ -6,6 +6,11 @@
 # dotenv files
 .env
 
+# Local application settings with secrets or machine-specific values
+src/FinTrack.Api/appsettings.Development.json
+src/FinTrack.Api/appsettings.Local.json
+src/FinTrack.Api/appsettings.*.local.json
+
 # User-specific files
 *.rsuser
 *.suo

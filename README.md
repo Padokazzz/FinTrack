@@ -169,6 +169,8 @@ fintrack-api/
 ├── tests/
 |   └── FinTrack.Tests/
 |
+├── .dockerignore
+├── .env.example
 ├── Dockerfile
 ├── docker-compose.yml
 ├── FinTrack.slnx
@@ -204,8 +206,8 @@ dotnet --version
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/fintrack-api.git
-cd fintrack-api
+git clone https://github.com/Padokazzz/FinTrack.git
+cd FinTrack
 ```
 
 Restore dependencies:
@@ -246,21 +248,30 @@ The exact port is displayed in the terminal when the API starts.
 
 ## Running with Docker
 
-This project is planned to run with Docker using:
+The project can run with Docker using:
 
 - API container
 - PostgreSQL container
 
-After `Dockerfile` and `docker-compose.yml` are added, run:
+Start the application:
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-Expected Swagger URL:
+The `.env` file is ignored by Git and should contain your local Docker credentials and JWT secret. The repository includes `.env.example` with safe placeholder values.
+
+Open Swagger:
 
 ```text
 http://localhost:8080/swagger
+```
+
+The Docker environment applies EF Core migrations automatically on startup through:
+
+```text
+Database__ApplyMigrationsOnStartup=true
 ```
 
 Stop containers:
@@ -273,6 +284,12 @@ Stop containers and remove volumes:
 
 ```bash
 docker compose down -v
+```
+
+Rebuild only the API image:
+
+```bash
+docker compose build api
 ```
 
 ## Database Configuration
@@ -306,7 +323,7 @@ JWT settings example:
   "Jwt": {
     "Issuer": "FinTrack.Api",
     "Audience": "FinTrack.Client",
-    "Secret": "CHANGE_THIS_TO_A_LONG_SECURE_SECRET_KEY",
+    "Secret": "CHANGE_THIS_TO_A_LONG_SECURE_SECRET_KEY_WITH_AT_LEAST_32_CHARS",
     "ExpirationMinutes": 60
   }
 }
@@ -552,17 +569,17 @@ Content-Type: application/json
 - [x] Add base NuGet packages
 - [x] Add domain entities
 - [x] Add application DTOs
-- [ ] Add FluentValidation validators
-- [ ] Configure Entity Framework Core
-- [ ] Configure PostgreSQL
-- [ ] Implement repositories
-- [ ] Implement services/use cases
-- [ ] Configure JWT authentication
-- [ ] Add controllers
-- [ ] Protect endpoints by authenticated user
-- [ ] Add migrations
-- [ ] Add unit tests
-- [ ] Add Docker support
+- [x] Add FluentValidation validators
+- [x] Configure Entity Framework Core
+- [x] Configure PostgreSQL
+- [x] Implement repositories
+- [x] Implement services/use cases
+- [x] Configure JWT authentication
+- [x] Add controllers
+- [x] Protect endpoints by authenticated user
+- [x] Add migrations
+- [x] Add unit tests
+- [x] Add Docker support
 - [ ] Add GitHub Actions CI
 
 ## Git Workflow

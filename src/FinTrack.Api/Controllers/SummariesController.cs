@@ -39,4 +39,19 @@ public class SummariesController : ControllerBase
 
         return Ok(result.Value);
     }
+
+    [HttpGet("overall-balance")]
+    public async Task<IActionResult> GetOverallBalance(CancellationToken cancellationToken)
+    {
+        var result = await _summaryService.GetOverallBalanceAsync(
+            _currentUserService.UserId,
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            return BadRequest(new { message = result.Error });
+        }
+
+        return Ok(result.Value);
+    }
 }

@@ -10,12 +10,15 @@ namespace FinTrack.Tests.Services;
 public class SummaryServiceTests
 {
     private readonly Mock<ITransactionRepository> _transactionRepositoryMock = new();
+    private readonly Mock<IAccountRepository> _accountRepositoryMock = new();
 
     private readonly SummaryService _service;
 
     public SummaryServiceTests()
     {
-        _service = new SummaryService(_transactionRepositoryMock.Object);
+        _service = new SummaryService(
+            _transactionRepositoryMock.Object,
+            _accountRepositoryMock.Object);
     }
 
     [Fact]
@@ -65,5 +68,42 @@ public class SummaryServiceTests
         result.Value.FinalBalance.Should().Be(3500);
         result.Value.Month.Should().Be(month);
         result.Value.Year.Should().Be(year);
+    }
+
+    [Fact]
+    public async Task GetOverallBalanceAsync_ShouldCalculateTotalBalance()
+    {
+        var userId = Guid.NewGuid();
+
+        var accounts = new List<Account>
+        {
+            new()
+            {
+                CurrentBalance = 1500,
+                UserId = userId
+            },
+            new()
+            {
+                CurrentBalance = 250,
+                UserId = userId
+            },
+            new()
+            {
+                CurrentBalance = -100,
+                UserId = userId
+            }
+        };
+
+        _accountRepositoryMock
+            .Setup(repository => repository.GetAllByUserIdAsync(
+                userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(accounts);
+
+        var result = await _service.GetOverallBalanceAsync(userId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalBalance.Should().Be(1650);
+        result.Value.AccountsCount.Should().Be(3);
     }
 }

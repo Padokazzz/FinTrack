@@ -10,4 +10,8 @@ public interface ISummaryService
         int month,
         int year,
         CancellationToken cancellationToken = default);
+
+    Task<Result<OverallBalanceResponse>> GetOverallBalanceAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

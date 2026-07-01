@@ -10,10 +10,14 @@ namespace FinTrack.Application.Services;
 public class SummaryService : ISummaryService
 {
     private readonly ITransactionRepository _transactionRepository;
+    private readonly IAccountRepository _accountRepository;
 
-    public SummaryService(ITransactionRepository transactionRepository)
+    public SummaryService(
+        ITransactionRepository transactionRepository,
+        IAccountRepository accountRepository)
     {
         _transactionRepository = transactionRepository;
+        _accountRepository = accountRepository;
     }
 
     public async Task<Result<MonthlySummaryResponse>> GetMonthlySummaryAsync(
@@ -48,5 +52,22 @@ public class SummaryService : ISummaryService
         };
 
         return Result<MonthlySummaryResponse>.Success(response);
+    }
+
+    public async Task<Result<OverallBalanceResponse>> GetOverallBalanceAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var accounts = await _accountRepository.GetAllByUserIdAsync(
+            userId,
+            cancellationToken);
+
+        var response = new OverallBalanceResponse
+        {
+            TotalBalance = accounts.Sum(account => account.CurrentBalance),
+            AccountsCount = accounts.Count
+        };
+
+        return Result<OverallBalanceResponse>.Success(response);
     }
 }

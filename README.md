@@ -1,3 +1,10 @@
+> **Projeto em destaque do portfólio** · Backend de uma aplicação de gestão financeira pessoal.
+>
+> API REST construída com ASP.NET Core e PostgreSQL, organizada em camadas para separar regras de negócio, casos de uso, infraestrutura e camada HTTP. O projeto explora autenticação, autorização por usuário, validação e persistência com Entity Framework Core.
+>
+> **Stack:** C# · .NET 10 · ASP.NET Core · EF Core · PostgreSQL · JWT · FluentValidation · xUnit · Docker
+>
+> **Aplicação relacionada:** [FinTrack Web](https://github.com/Padokazzz/fintrack-web) · [Repositório](https://github.com/Padokazzz/FinTrack)
 # FinTrack API
 
 **FinTrack API** is a personal finance management REST API built with **C#**, **ASP.NET Core**, **Entity Framework Core**, **PostgreSQL**, **JWT Authentication**, **FluentValidation**, **xUnit** and a simplified **Clean Architecture** approach.

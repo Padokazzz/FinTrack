@@ -11,6 +11,7 @@ public static class DependencyInjectionExtensions
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<ITransferService, TransferService>();
         services.AddScoped<ISummaryService, SummaryService>();
         services.AddScoped<IAuthService, AuthService>();
 

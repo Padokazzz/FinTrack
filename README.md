@@ -14,6 +14,7 @@ O projeto foi estruturado para demonstrar práticas de desenvolvimento backend: 
 - Operações de criação, consulta, atualização e remoção de contas financeiras.
 - Gerenciamento de categorias de receitas e despesas.
 - Registro e consulta de transações.
+- Transferências entre contas com reversão ao excluir.
 - Filtros de transações por mês, ano, tipo e categoria.
 - Resumo mensal de receitas, despesas e saldo.
 - Documentação interativa dos endpoints com Swagger / OpenAPI.
@@ -192,9 +193,15 @@ A suíte atual contempla componentes como serviços da aplicação, validadores 
 | Contas | `GET, POST, PUT, DELETE /api/accounts` |
 | Categorias | `GET, POST, PUT, DELETE /api/categories` |
 | Transações | `GET, POST, PUT, DELETE /api/transactions` |
+| Transferências | `GET, POST /api/transfers` e `GET, DELETE /api/transfers/{id}` |
+| Saldo total | `GET /api/summaries/overall-balance` |
 | Resumo mensal | `GET /api/summaries/monthly?month={month}&year={year}` |
 
 As rotas de consulta, atualização e remoção de recursos individuais também recebem seus respectivos identificadores. Consulte o Swagger para os contratos completos de request e response.
+
+Os campos de tipo nos corpos JSON usam valores numéricos. Por exemplo, `type: 1` representa uma conta corrente na criação de contas e uma receita na criação de categorias ou transações. Valores monetários aceitam até duas casas decimais.
+
+A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tentar excluir uma conta com lançamentos ou transferências vinculados. Em caso de concorrência, recarregue os dados antes de tentar novamente.
 
 ## Segurança considerada no projeto
 

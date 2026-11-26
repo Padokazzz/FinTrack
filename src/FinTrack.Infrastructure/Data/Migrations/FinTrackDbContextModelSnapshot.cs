@@ -55,6 +55,12 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
@@ -144,6 +150,50 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.ToTable("Transactions", (string)null);
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.Transfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<Guid>("FromAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ToAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromAccountId");
+
+                    b.HasIndex("ToAccountId");
+
+                    b.HasIndex("UserId", "Date");
+
+                    b.ToTable("Transfers", (string)null);
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -228,8 +278,39 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.Transfer", b =>
+                {
+                    b.HasOne("FinTrack.Domain.Entities.Account", "FromAccount")
+                        .WithMany("OutgoingTransfers")
+                        .HasForeignKey("FromAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FinTrack.Domain.Entities.Account", "ToAccount")
+                        .WithMany("IncomingTransfers")
+                        .HasForeignKey("ToAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FinTrack.Domain.Entities.User", "User")
+                        .WithMany("Transfers")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FromAccount");
+
+                    b.Navigation("ToAccount");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.Account", b =>
                 {
+                    b.Navigation("IncomingTransfers");
+
+                    b.Navigation("OutgoingTransfers");
+
                     b.Navigation("Transactions");
                 });
 
@@ -245,6 +326,8 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Navigation("Categories");
 
                     b.Navigation("Transactions");
+
+                    b.Navigation("Transfers");
                 });
 #pragma warning restore 612, 618
         }

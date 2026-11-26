@@ -12,6 +12,8 @@ public class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.HasKey(account => account.Id);
 
+        builder.Property<uint>("xmin").IsRowVersion();
+
         builder.Property(account => account.Name)
             .IsRequired()
             .HasMaxLength(100);

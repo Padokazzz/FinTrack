@@ -3,7 +3,7 @@ import os
 import secrets
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 from time import monotonic, sleep
@@ -28,7 +28,7 @@ def request(method, path, body=None, token=None):
         return response.status, json.loads(content, parse_float=Decimal) if content else None
 
 
-class TransferIntegrationTests(unittest.TestCase):
+class FinancialIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         deadline = monotonic() + 60
@@ -81,6 +81,98 @@ class TransferIntegrationTests(unittest.TestCase):
         )
         total = self.call("GET", "summaries/overall-balance", 200, token=self.token)
         self.assertEqual(total["totalBalance"], 1200)
+
+    def recurrence_request(self, automatic, amount, start, transaction_type=1):
+        category = self.call(
+            "POST", "categories", 201,
+            {"name": "Recurring category", "type": transaction_type}, self.token,
+        )
+        return {
+            "description": "Recurring test",
+            "accountId": self.origin,
+            "categoryId": category["id"],
+            "startsOn": start,
+            "type": transaction_type,
+            "automatic": automatic,
+            "amount": amount,
+        }
+
+    def agenda(self, token=None):
+        return self.call("GET", "recurrences/agenda", 200, token=token or self.token)
+
+    def wait_for(self, query, condition):
+        deadline = monotonic() + 25
+        while monotonic() < deadline:
+            value = query()
+            if condition(value):
+                return value
+            sleep(0.25)
+        self.fail("The recurring worker did not produce the expected result.")
+
+    def test_automatic_recurrence_recovers_missed_months_and_projects_the_next(self):
+        today = date.fromisoformat(self.agenda()["today"])
+        previous_month = today.replace(day=1) - timedelta(days=1)
+        start = previous_month.replace(day=1).isoformat()
+        body = self.recurrence_request(True, 100, start)
+        self.call("POST", "recurrences", 400, {**body, "amount": None}, self.token)
+        rule = self.call("POST", "recurrences", 201, body, self.token)
+        transactions = self.wait_for(
+            lambda: self.call("GET", "transactions", 200, token=self.token),
+            lambda rows: len(rows) >= 2,
+        )
+        self.assertCountEqual([item["date"][:10] for item in transactions],
+                              [start, today.replace(day=1).isoformat()])
+        self.assertEqual(self.call("GET", f"accounts/{self.origin}", 200,
+                                   token=self.token)["currentBalance"], 1200)
+        agenda = self.agenda()
+        self.assertTrue(all(item["date"] > today.isoformat() for item in agenda["items"]))
+        projection = next(item for item in agenda["accounts"] if item["id"] == self.origin)
+        expected = 1200 + sum(item["amount"] for item in agenda["items"])
+        self.assertEqual(projection["projectedBalance"], expected)
+        self.call("DELETE", f"recurrences/{rule['id']}", 204, token=self.token)
+        self.assertEqual(len(self.call("GET", "transactions", 200, token=self.token)), 2)
+
+    def test_manual_recurrence_requires_the_actual_value_and_posts_only_once(self):
+        today = self.agenda()["today"]
+        body = self.recurrence_request(False, None, today, transaction_type=2)
+        rule = self.call("POST", "recurrences", 201, body, self.token)
+        path = f"recurrences/{rule['id']}/occurrences/{today}/confirm"
+        upcoming = self.wait_for(self.agenda, lambda agenda: any(item["pending"] for item in agenda["items"]))
+        account = next(item for item in upcoming["accounts"] if item["id"] == self.origin)
+        self.assertEqual(account["currentBalance"], 1000)
+        self.assertTrue(account["hasUnknownAmounts"])
+        self.call("POST", path, 400, {"amount": None}, self.token)
+        self.call("POST", path, 400, {"amount": 0.001}, self.token)
+        other = self.register()
+        self.assertEqual(self.agenda(other)["items"], [])
+        self.call("POST", path, 400, {"amount": 75.5}, other)
+        self.call("PATCH", f"recurrences/{rule['id']}", 404, {"paused": True}, other)
+
+        def confirm(_):
+            return request("POST", f"/api/{path}", {"amount": 75.5}, self.token)[0]
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            statuses = list(pool.map(confirm, range(2)))
+        self.assertIn(204, statuses)
+        self.assertTrue(all(status in (204, 409) for status in statuses))
+        self.call("POST", path, 204, {"amount": 75.5}, self.token)
+        self.assertEqual(len(self.call("GET", "transactions", 200, token=self.token)), 1)
+        self.assertEqual(self.call("GET", f"accounts/{self.origin}", 200,
+                                   token=self.token)["currentBalance"], Decimal("924.50"))
+        self.assertFalse(any(item["pending"] for item in self.agenda()["items"]))
+
+    def test_pause_and_resume_update_the_agenda_without_posting_future_transactions(self):
+        start = (date.fromisoformat(self.agenda()["today"]) + timedelta(days=2)).isoformat()
+        body = self.recurrence_request(True, 250, start)
+        rule = self.call("POST", "recurrences", 201, body, self.token)
+        path = f"recurrences/{rule['id']}"
+        self.assertIn(start, [item["date"] for item in self.agenda()["items"]])
+        self.call("PATCH", path, 204, {"paused": True}, self.token)
+        self.assertEqual(self.agenda()["items"], [])
+        self.call("DELETE", f"categories/{body['categoryId']}", 409, token=self.token)
+        self.call("PATCH", path, 204, {"paused": False}, self.token)
+        self.assertIn(start, [item["date"] for item in self.agenda()["items"]])
+        self.assertEqual(self.call("GET", "transactions", 200, token=self.token), [])
 
     def test_transfer_history_paginates_with_stable_order_and_user_scope(self):
         created_ids = {

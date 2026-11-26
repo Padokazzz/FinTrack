@@ -20,6 +20,10 @@ public class FinTrackDbContext : DbContext
 
     public DbSet<Transfer> Transfers => Set<Transfer>();
 
+    public DbSet<RecurringRule> RecurringRules => Set<RecurringRule>();
+
+    public DbSet<RecurringOccurrence> RecurringOccurrences => Set<RecurringOccurrence>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

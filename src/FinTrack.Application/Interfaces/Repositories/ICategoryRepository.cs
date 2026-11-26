@@ -17,6 +17,8 @@ public interface ICategoryRepository
 
     Task AddAsync(Category category, CancellationToken cancellationToken = default);
 
+    Task<bool> HasRecurringRulesAsync(Guid id, CancellationToken cancellationToken);
+
     void Update(Category category);
 
     void Delete(Category category);

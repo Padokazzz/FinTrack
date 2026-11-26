@@ -15,6 +15,7 @@ O projeto foi estruturado para demonstrar práticas de desenvolvimento backend: 
 - Gerenciamento de categorias de receitas e despesas.
 - Registro e consulta de transações.
 - Transferências entre contas com reversão ao excluir.
+- Recorrências mensais automáticas ou com confirmação e agenda de 30 dias.
 - Filtros de transações por mês, ano, tipo e categoria.
 - Resumo mensal de receitas, despesas e saldo.
 - Documentação interativa dos endpoints com Swagger / OpenAPI.
@@ -213,6 +214,18 @@ Os resumos mensais e o saldo total são calculados no PostgreSQL.
 Os campos de tipo nos corpos JSON usam valores numéricos. Por exemplo, `type: 1` representa uma conta corrente na criação de contas e uma receita na criação de categorias ou transações. Valores monetários aceitam até duas casas decimais.
 
 A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tentar excluir uma conta com lançamentos ou transferências vinculados. Em caso de concorrência, recarregue os dados antes de tentar novamente.
+
+## Recorrências mensais
+
+- `GET /api/recurrences` lista as regras. `POST /api/recurrences` cadastra uma regra com conta, categoria, tipo, primeira data e modo. O valor é obrigatório no modo automático e opcional como estimativa no modo de confirmação.
+- `GET /api/recurrences/agenda` mostra ocorrências pendentes, previsões para os próximos 30 dias e os saldos projetados por conta.
+- `POST /api/recurrences/{id}/occurrences/{date}/confirm` registra uma ocorrência manual com o valor real. Repetir a confirmação da mesma ocorrência não duplica o lançamento.
+- `PATCH /api/recurrences/{id}`, com `paused`, pausa ou retoma. A retomada pula as datas perdidas durante a pausa. Pendências que já foram criadas continuam disponíveis.
+- `DELETE /api/recurrences/{id}` exclui a regra e as ocorrências pendentes. Lançamentos registrados permanecem no histórico.
+
+A primeira data define o dia mensal. Meses mais curtos usam o último dia e os demais voltam ao dia original. O processamento recupera ocorrências vencidas enquanto a API estava desligada. O fuso padrão é `America/Sao_Paulo` e pode ser definido com `Recurrences__TimeZone`. O modo automático registra no FinTrack. Débitos e créditos bancários dependem dos serviços do banco.
+
+A migração `AddMonthlyRecurrences` cria as tabelas de regras e ocorrências. O Docker aplica as migrações na inicialização. A suíte de integração cobre recuperação de meses vencidos, confirmação concorrente, isolamento entre usuários, projeção de saldo, pausa e retomada.
 
 ## Segurança considerada no projeto
 

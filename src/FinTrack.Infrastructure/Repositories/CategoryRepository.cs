@@ -50,6 +50,9 @@ public class CategoryRepository : ICategoryRepository
         return _context.Categories.AddAsync(category, cancellationToken).AsTask();
     }
 
+    public Task<bool> HasRecurringRulesAsync(Guid id, CancellationToken cancellationToken) =>
+        _context.RecurringRules.AnyAsync(rule => rule.CategoryId == id, cancellationToken);
+
     public void Update(Category category)
     {
         _context.Categories.Update(category);

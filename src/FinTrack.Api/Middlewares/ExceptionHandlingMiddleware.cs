@@ -51,6 +51,18 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.Conflict,
                 "This account has transactions or transfers. Remove the linked records before deleting the account.");
         }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.ForeignKeyViolation,
+            ConstraintName: "FK_RecurringRules_Accounts_AccountId" or "FK_RecurringRules_Categories_CategoryId"
+        })
+        {
+            await HandleExceptionAsync(
+                context,
+                exception,
+                HttpStatusCode.Conflict,
+                "The account or category is linked to a recurring rule. Reload the data or remove the linked rule.");
+        }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Unhandled exception occurred.");

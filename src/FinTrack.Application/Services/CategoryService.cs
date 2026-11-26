@@ -84,6 +84,11 @@ public class CategoryService : ICategoryService
             return Result<CategoryResponse>.Failure("A category with the same name and type already exists.");
         }
 
+        if (category.Type != request.Type && await _categoryRepository.HasRecurringRulesAsync(id, cancellationToken))
+        {
+            return Result<CategoryResponse>.Failure("Remove the linked recurring rules before changing the category type.");
+        }
+
         category.Name = request.Name;
         category.Type = request.Type;
         category.UpdatedAt = DateTime.UtcNow;

@@ -9,6 +9,9 @@ public interface ITransferService
         Guid userId,
         CancellationToken cancellationToken = default);
 
+    Task<PaginatedResponse<TransferResponse>> GetPageAsync(
+        Guid userId, int page, int pageSize, CancellationToken cancellationToken);
+
     Task<Result<TransferResponse>> GetByIdAsync(
         Guid id,
         Guid userId,

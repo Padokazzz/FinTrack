@@ -1,3 +1,4 @@
+using FinTrack.Api.Models;
 using FinTrack.Application.DTOs.Transfers;
 using FinTrack.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -29,6 +30,17 @@ public class TransfersController : ControllerBase
             cancellationToken);
 
         return Ok(result.Value);
+    }
+
+    [HttpGet("page")]
+    public async Task<IActionResult> GetPage(
+        [FromQuery] PaginationQuery pagination,
+        CancellationToken cancellationToken)
+    {
+        var response = await _transferService.GetPageAsync(
+            _currentUserService.UserId, pagination.Page, pagination.PageSize, cancellationToken);
+
+        return Ok(response);
     }
 
     [HttpGet("{id:guid}")]

@@ -44,6 +44,16 @@ public class TransactionService : ITransactionService
         return Result<List<TransactionResponse>>.Success(response);
     }
 
+    public async Task<PaginatedResponse<TransactionResponse>> GetPageAsync(
+        Guid userId, TransactionFilterRequest filter, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var (items, totalCount) = await _transactionRepository.GetPageAsync(
+            userId, filter.Month, filter.Year, filter.Type, filter.CategoryId, page, pageSize, cancellationToken);
+
+        return new PaginatedResponse<TransactionResponse>(
+            items.Select(MapToResponse).ToList(), page, pageSize, totalCount);
+    }
+
     public async Task<Result<TransactionResponse>> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var transaction = await _transactionRepository.GetByIdAndUserIdAsync(id, userId, cancellationToken);

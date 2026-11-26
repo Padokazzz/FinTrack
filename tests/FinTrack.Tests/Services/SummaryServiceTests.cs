@@ -1,7 +1,5 @@
 using FinTrack.Application.Interfaces.Repositories;
 using FinTrack.Application.Services;
-using FinTrack.Domain.Entities;
-using FinTrack.Domain.Enums;
 using FluentAssertions;
 using Moq;
 
@@ -28,37 +26,9 @@ public class SummaryServiceTests
         var month = 6;
         var year = 2026;
 
-        var transactions = new List<Transaction>
-        {
-            new()
-            {
-                Amount = 5000,
-                Type = TransactionType.Income,
-                Date = new DateTime(2026, 6, 5)
-            },
-            new()
-            {
-                Amount = 1200,
-                Type = TransactionType.Expense,
-                Date = new DateTime(2026, 6, 10)
-            },
-            new()
-            {
-                Amount = 300,
-                Type = TransactionType.Expense,
-                Date = new DateTime(2026, 6, 15)
-            }
-        };
-
         _transactionRepositoryMock
-            .Setup(repository => repository.GetFilteredAsync(
-                userId,
-                month,
-                year,
-                null,
-                null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(transactions);
+            .Setup(repository => repository.GetMonthlyTotalsAsync(userId, month, year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((5000m, 1500m));
 
         var result = await _service.GetMonthlySummaryAsync(userId, month, year);
 
@@ -75,30 +45,9 @@ public class SummaryServiceTests
     {
         var userId = Guid.NewGuid();
 
-        var accounts = new List<Account>
-        {
-            new()
-            {
-                CurrentBalance = 1500,
-                UserId = userId
-            },
-            new()
-            {
-                CurrentBalance = 250,
-                UserId = userId
-            },
-            new()
-            {
-                CurrentBalance = -100,
-                UserId = userId
-            }
-        };
-
         _accountRepositoryMock
-            .Setup(repository => repository.GetAllByUserIdAsync(
-                userId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(accounts);
+            .Setup(repository => repository.GetOverallBalanceAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((1650m, 3));
 
         var result = await _service.GetOverallBalanceAsync(userId);
 

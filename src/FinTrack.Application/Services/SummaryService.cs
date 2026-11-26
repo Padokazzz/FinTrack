@@ -1,9 +1,7 @@
 using FinTrack.Application.Common;
 using FinTrack.Application.DTOs.Summaries;
-using FinTrack.Application.DTOs.Transactions;
 using FinTrack.Application.Interfaces.Repositories;
 using FinTrack.Application.Interfaces.Services;
-using FinTrack.Domain.Enums;
 
 namespace FinTrack.Application.Services;
 
@@ -26,21 +24,8 @@ public class SummaryService : ISummaryService
         int year,
         CancellationToken cancellationToken = default)
     {
-        var transactions = await _transactionRepository.GetFilteredAsync(
-            userId,
-            month,
-            year,
-            null,
-            null,
-            cancellationToken);
-
-        var totalIncome = transactions
-            .Where(transaction => transaction.Type == TransactionType.Income)
-            .Sum(transaction => transaction.Amount);
-
-        var totalExpense = transactions
-            .Where(transaction => transaction.Type == TransactionType.Expense)
-            .Sum(transaction => transaction.Amount);
+        var (totalIncome, totalExpense) = await _transactionRepository.GetMonthlyTotalsAsync(
+            userId, month, year, cancellationToken);
 
         var response = new MonthlySummaryResponse
         {
@@ -58,14 +43,14 @@ public class SummaryService : ISummaryService
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        var accounts = await _accountRepository.GetAllByUserIdAsync(
+        var (totalBalance, accountsCount) = await _accountRepository.GetOverallBalanceAsync(
             userId,
             cancellationToken);
 
         var response = new OverallBalanceResponse
         {
-            TotalBalance = accounts.Sum(account => account.CurrentBalance),
-            AccountsCount = accounts.Count
+            TotalBalance = totalBalance,
+            AccountsCount = accountsCount
         };
 
         return Result<OverallBalanceResponse>.Success(response);

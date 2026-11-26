@@ -199,11 +199,16 @@ FINTRACK_TEST_URL=http://127.0.0.1:8080 python3 tests/integration/test_transfers
 | Contas | `GET, POST, PUT, DELETE /api/accounts` |
 | Categorias | `GET, POST, PUT, DELETE /api/categories` |
 | Transações | `GET, POST, PUT, DELETE /api/transactions` |
+| Histórico paginado | `GET /api/transactions/page` e `GET /api/transfers/page` |
 | Transferências | `GET, POST /api/transfers` e `GET, DELETE /api/transfers/{id}` |
 | Saldo total | `GET /api/summaries/overall-balance` |
 | Resumo mensal | `GET /api/summaries/monthly?month={month}&year={year}` |
 
 As rotas de consulta, atualização e remoção de recursos individuais também recebem seus respectivos identificadores. Consulte o Swagger para os contratos completos de request e response.
+
+As rotas paginadas aceitam `page` (padrão 1) e `pageSize` (padrão 20, máximo 100). A resposta contém `items`, `page`, `pageSize` e `totalCount`. A rota de transações aplica os filtros por mês, ano, tipo e categoria ao total e aos itens. As listagens anteriores continuam disponíveis para clientes existentes.
+
+Os resumos mensais e o saldo total são calculados no PostgreSQL.
 
 Os campos de tipo nos corpos JSON usam valores numéricos. Por exemplo, `type: 1` representa uma conta corrente na criação de contas e uma receita na criação de categorias ou transações. Valores monetários aceitam até duas casas decimais.
 
@@ -222,7 +227,6 @@ A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tenta
 - [x] Configurar CI com GitHub Actions.
 - [ ] Ampliar a cobertura com testes de integração.
 - [ ] Implementar refresh tokens.
-- [ ] Adicionar paginação às listagens.
 - [ ] Evoluir relatórios e exportação de dados.
 - [ ] Preparar implantação em ambiente cloud.
 

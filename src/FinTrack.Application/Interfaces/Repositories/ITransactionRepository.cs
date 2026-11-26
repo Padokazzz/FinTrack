@@ -13,6 +13,12 @@ public interface ITransactionRepository
         Guid? categoryId,
         CancellationToken cancellationToken = default);
 
+    Task<(List<Transaction> Items, int TotalCount)> GetPageAsync(
+        Guid userId, int? month, int? year, TransactionType? type, Guid? categoryId, int page, int pageSize, CancellationToken cancellationToken);
+
+    Task<(decimal Income, decimal Expense)> GetMonthlyTotalsAsync(
+        Guid userId, int month, int year, CancellationToken cancellationToken);
+
     Task<Transaction?> GetByIdAndUserIdAsync(
         Guid id,
         Guid userId,

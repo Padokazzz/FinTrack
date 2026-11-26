@@ -34,6 +34,16 @@ public class TransferService : ITransferService
             transfers.Select(MapToResponse).ToList());
     }
 
+    public async Task<PaginatedResponse<TransferResponse>> GetPageAsync(
+        Guid userId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var (items, totalCount) = await _transferRepository.GetPageAsync(
+            userId, page, pageSize, cancellationToken);
+
+        return new PaginatedResponse<TransferResponse>(
+            items.Select(MapToResponse).ToList(), page, pageSize, totalCount);
+    }
+
     public async Task<Result<TransferResponse>> GetByIdAsync(
         Guid id,
         Guid userId,

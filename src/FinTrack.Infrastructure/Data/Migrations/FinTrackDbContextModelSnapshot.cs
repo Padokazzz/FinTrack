@@ -187,6 +187,38 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.ToTable("RecurringRules");
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.RefreshSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshSessions");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -367,6 +399,17 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("FinTrack.Domain.Entities.RefreshSession", b =>
+                {
+                    b.HasOne("FinTrack.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("FinTrack.Domain.Entities.Transaction", b =>

@@ -1,32 +1,30 @@
 using FinTrack.Application.DTOs.Auth;
 using FinTrack.Application.Interfaces.Services;
+using FinTrack.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace FinTrack.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController : ControllerBase
+public class AuthController(IAuthService authService, RefreshSessionService sessions, IWebHostEnvironment environment) : ControllerBase
 {
-    private readonly IAuthService _authService;
-
-    public AuthController(IAuthService authService)
-    {
-        _authService = authService;
-    }
+    private const string RefreshCookieName = "fintrack_refresh";
 
     [HttpPost("register")]
     public async Task<IActionResult> Register(
         RegisterRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _authService.RegisterAsync(request, cancellationToken);
+        var result = await authService.RegisterAsync(request, cancellationToken);
 
         if (result.IsFailure)
         {
             return BadRequest(new { message = result.Error });
         }
 
+        SetCookie(await sessions.StartAsync(result.Value.UserId, cancellationToken));
         return Ok(result.Value);
     }
 
@@ -35,13 +33,60 @@ public class AuthController : ControllerBase
         LoginRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await _authService.LoginAsync(request, cancellationToken);
+        var result = await authService.LoginAsync(request, cancellationToken);
 
         if (result.IsFailure)
         {
             return BadRequest(new { message = result.Error });
         }
 
+        SetCookie(await sessions.StartAsync(result.Value.UserId, cancellationToken));
         return Ok(result.Value);
     }
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
+    {
+        if (!Request.Headers.ContainsKey("X-FinTrack-Session")) return BadRequest();
+
+        try
+        {
+            var result = await sessions.RefreshAsync(Request.Cookies[RefreshCookieName], cancellationToken);
+            if (result is null)
+            {
+                return Unauthorized();
+            }
+
+            SetCookie(result.Value.Cookie);
+            return Ok(result.Value.Auth);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Unauthorized();
+        }
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        if (!Request.Headers.ContainsKey("X-FinTrack-Session")) return BadRequest();
+
+        await sessions.LogoutAsync(Request.Cookies[RefreshCookieName], cancellationToken);
+        Response.Cookies.Delete(RefreshCookieName, CookieSettings());
+        return NoContent();
+    }
+
+    private void SetCookie(RefreshCookie cookie)
+    {
+        var options = CookieSettings();
+        options.Expires = cookie.ExpiresAt;
+        Response.Cookies.Append(RefreshCookieName, cookie.Value, options);
+    }
+
+    private CookieOptions CookieSettings() => new()
+    {
+        HttpOnly = true,
+        Secure = Request.IsHttps || !environment.IsDevelopment(),
+        SameSite = SameSiteMode.Strict,
+        Path = "/api/auth"
+    };
 }

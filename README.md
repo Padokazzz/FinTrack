@@ -10,14 +10,14 @@ O projeto foi estruturado para demonstrar práticas de desenvolvimento backend: 
 
 ## Funcionalidades
 
-- Cadastro e autenticação de usuários com JWT.
+- Cadastro e autenticação de usuários com JWT e renovação por cookie HttpOnly.
 - Operações de criação, consulta, atualização e remoção de contas financeiras.
 - Gerenciamento de categorias de receitas e despesas.
 - Registro e consulta de transações.
 - Transferências entre contas com reversão ao excluir.
 - Recorrências mensais automáticas ou com confirmação e agenda de 30 dias.
 - Filtros de transações por mês, ano, tipo e categoria.
-- Resumo mensal de receitas, despesas e saldo.
+- Resumo mensal, detalhamento por categoria e exportação de transações em CSV.
 - Documentação interativa dos endpoints com Swagger / OpenAPI.
 
 Os dados financeiros são associados ao usuário autenticado. O identificador do usuário deve ser obtido a partir das claims de autenticação, e não confiado ao conteúdo enviado pelo cliente.
@@ -197,12 +197,15 @@ FINTRACK_TEST_URL=http://127.0.0.1:8080 python3 tests/integration/test_transfers
 | --- | --- |
 | Cadastro | `POST /api/auth/register` |
 | Login | `POST /api/auth/login` |
+| Renovação e encerramento de sessão | `POST /api/auth/refresh` e `POST /api/auth/logout` |
 | Contas | `GET, POST, PUT, DELETE /api/accounts` |
 | Categorias | `GET, POST, PUT, DELETE /api/categories` |
 | Transações | `GET, POST, PUT, DELETE /api/transactions` |
 | Histórico paginado | `GET /api/transactions/page` e `GET /api/transfers/page` |
 | Transferências | `GET, POST /api/transfers` e `GET, DELETE /api/transfers/{id}` |
 | Saldo total | `GET /api/summaries/overall-balance` |
+| Relatório por categoria | `GET /api/reports/categories?month={month}&year={year}&type={type}` |
+| Exportação mensal | `GET /api/reports/transactions.csv?month={month}&year={year}` |
 | Resumo mensal | `GET /api/summaries/monthly?month={month}&year={year}` |
 
 As rotas de consulta, atualização e remoção de recursos individuais também recebem seus respectivos identificadores. Consulte o Swagger para os contratos completos de request e response.
@@ -214,6 +217,14 @@ Os resumos mensais e o saldo total são calculados no PostgreSQL.
 Os campos de tipo nos corpos JSON usam valores numéricos. Por exemplo, `type: 1` representa uma conta corrente na criação de contas e uma receita na criação de categorias ou transações. Valores monetários aceitam até duas casas decimais.
 
 A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tentar excluir uma conta com lançamentos ou transferências vinculados. Em caso de concorrência, recarregue os dados antes de tentar novamente.
+
+## Sessões e relatórios
+
+Cadastro e login devolvem o JWT e configuram um cookie de renovação HttpOnly. O frontend envia credenciais nas chamadas de autenticação. Para renovar ou encerrar uma sessão, envie o cookie e o cabeçalho `X-FinTrack-Session: 1`. Cada renovação troca o segredo do cookie e a sessão vence 30 dias após a criação. O logout revoga a renovação. Os JWTs emitidos seguem seu prazo normal de validade.
+
+Em desenvolvimento, o CORS aceita `http://localhost:5173`. Configure origens explícitas com `Cors__Origins__0`, `Cors__Origins__1` e assim por diante quando precisar de outros endereços.
+
+O relatório soma transações do usuário autenticado por categoria e tipo. O CSV exporta todas as transações realizadas no mês selecionado com data, descrição, conta, categoria, tipo e valor. Campos de texto são escapados para leitura segura em planilhas.
 
 ## Recorrências mensais
 
@@ -238,9 +249,9 @@ A migração `AddMonthlyRecurrences` cria as tabelas de regras e ocorrências. O
 ## Próximos passos
 
 - [x] Configurar CI com GitHub Actions.
-- [ ] Ampliar a cobertura com testes de integração.
-- [ ] Implementar refresh tokens.
-- [ ] Evoluir relatórios e exportação de dados.
+- [x] Ampliar a cobertura com testes de integração.
+- [x] Implementar refresh tokens.
+- [x] Evoluir relatórios e exportação de dados.
 - [ ] Preparar implantação em ambiente cloud.
 
 ## Repositórios relacionados

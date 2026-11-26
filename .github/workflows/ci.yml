@@ -1,0 +1,32 @@
+name: API CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build --configuration Release
+      - run: dotnet test --configuration Release --no-build
+      - name: Start API and PostgreSQL
+        run: docker compose up --detach --build
+      - name: Run integration tests
+        run: python3 tests/integration/test_transfers.py
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Remove test containers and database
+        if: always()
+        run: docker compose down --volumes

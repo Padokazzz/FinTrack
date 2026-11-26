@@ -182,7 +182,13 @@ Ou informe o projeto de testes explicitamente:
 dotnet test tests/FinTrack.Tests/FinTrack.Tests.csproj
 ```
 
-A suíte atual contempla componentes como serviços da aplicação, validadores e regras de cálculo. Testes de integração e pipeline de CI permanecem como evoluções planejadas.
+A suíte unitária cobre serviços da aplicação, validadores e regras de cálculo. O GitHub Actions também sobe a API com um PostgreSQL descartável para validar as migrações e os fluxos de transferência, incluindo reversão, concorrência, validação e isolamento entre usuários.
+
+Para repetir a suíte HTTP localmente, use uma instância de desenvolvimento com um banco descartável e o Swagger habilitado. O teste requer Python 3, cria usuários e grava dados nesse banco.
+
+```bash
+FINTRACK_TEST_URL=http://127.0.0.1:8080 python3 tests/integration/test_transfers.py
+```
 
 ## Principais endpoints
 
@@ -213,7 +219,7 @@ A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tenta
 
 ## Próximos passos
 
-- [ ] Configurar CI com GitHub Actions.
+- [x] Configurar CI com GitHub Actions.
 - [ ] Ampliar a cobertura com testes de integração.
 - [ ] Implementar refresh tokens.
 - [ ] Adicionar paginação às listagens.

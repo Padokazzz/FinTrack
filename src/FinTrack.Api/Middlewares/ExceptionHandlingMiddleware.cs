@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace FinTrack.Api.Middlewares;
 
@@ -25,6 +27,29 @@ public class ExceptionHandlingMiddleware
         catch (UnauthorizedAccessException exception)
         {
             await HandleExceptionAsync(context, exception, HttpStatusCode.Unauthorized);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            await HandleExceptionAsync(
+                context,
+                exception,
+                HttpStatusCode.Conflict,
+                "The data changed while this operation was being saved. Reload and try again.");
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.ForeignKeyViolation,
+            ConstraintName: "FK_Transactions_Accounts_AccountId"
+                or "FK_Transfers_Accounts_FromAccountId"
+                or "FK_Transfers_Accounts_ToAccountId"
+        } && HttpMethods.IsDelete(context.Request.Method)
+          && context.Request.Path.StartsWithSegments("/api/accounts"))
+        {
+            await HandleExceptionAsync(
+                context,
+                exception,
+                HttpStatusCode.Conflict,
+                "This account has transactions or transfers. Remove the linked records before deleting the account.");
         }
         catch (Exception exception)
         {

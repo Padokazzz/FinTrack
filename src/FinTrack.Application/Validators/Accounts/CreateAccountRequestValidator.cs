@@ -16,6 +16,7 @@ public class CreateAccountRequestValidator : AbstractValidator<CreateAccountRequ
             .IsInEnum().WithMessage("Account type is invalid.");
 
         RuleFor(x => x.InitialBalance)
-            .GreaterThanOrEqualTo(0).WithMessage("Initial balance must be zero or greater.");
+            .GreaterThanOrEqualTo(0).WithMessage("Initial balance must be zero or greater.")
+            .PrecisionScale(18, 2, true).WithMessage("Initial balance must have up to 16 integer digits and 2 decimal places.");
     }
 }

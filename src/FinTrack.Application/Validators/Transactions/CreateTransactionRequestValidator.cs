@@ -12,7 +12,8 @@ public class CreateTransactionRequestValidator : AbstractValidator<CreateTransac
             .MaximumLength(150).WithMessage("Description must not exceed 150 characters.");
 
         RuleFor(x => x.Amount)
-            .GreaterThan(0).WithMessage("Amount must be greater than zero.");
+            .GreaterThan(0).WithMessage("Amount must be greater than zero.")
+            .PrecisionScale(18, 2, true).WithMessage("Amount must have up to 16 integer digits and 2 decimal places.");
 
         RuleFor(x => x.Date)
             .NotEmpty().WithMessage("Date is required.");

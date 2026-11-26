@@ -44,6 +44,17 @@ public class CreateTransactionRequestValidatorTests
     }
 
     [Fact]
+    public void Validate_ShouldHaveError_WhenAmountHasSubCentPrecision()
+    {
+        var request = CreateValidRequest();
+        request.Amount = 0.001m;
+
+        var result = _validator.TestValidate(request);
+
+        result.ShouldHaveValidationErrorFor(x => x.Amount);
+    }
+
+    [Fact]
     public void Validate_ShouldHaveError_WhenTypeIsInvalid()
     {
         var request = CreateValidRequest();

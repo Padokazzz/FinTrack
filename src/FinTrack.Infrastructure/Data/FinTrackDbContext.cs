@@ -26,9 +26,17 @@ public class FinTrackDbContext : DbContext
 
     public DbSet<RecurringOccurrence> RecurringOccurrences => Set<RecurringOccurrence>();
 
+    public DbSet<SpendingBudget> SpendingBudgets => Set<SpendingBudget>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<SpendingBudget>(entity =>
+        {
+            entity.HasKey(x => x.UserId);
+            entity.HasOne<User>().WithOne().HasForeignKey<SpendingBudget>(x => x.UserId);
+        });
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(FinTrackDbContext).Assembly);
     }

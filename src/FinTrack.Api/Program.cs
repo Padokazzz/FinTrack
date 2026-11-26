@@ -22,6 +22,7 @@ const string FrontendCorsPolicy = "FrontendCorsPolicy";
 builder.Services.AddApplication();
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddScoped<FinTrack.Infrastructure.Insights.SpendingInsights>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(TimeZoneInfo.FindSystemTimeZoneById(
     builder.Configuration["Recurrences:TimeZone"] ?? "America/Sao_Paulo"));

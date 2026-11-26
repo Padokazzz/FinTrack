@@ -11,6 +11,7 @@ from threading import Barrier
 from time import monotonic, sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 BASE_URL = os.getenv("FINTRACK_TEST_URL", "http://127.0.0.1:8080").rstrip("/")
 
@@ -46,7 +47,7 @@ class FinancialIntegrationTests(unittest.TestCase):
 
     def call(self, method, path, expected, body=None, token=None):
         status, result = request(method, f"/api/{path}", body, token)
-        self.assertEqual(status, expected, f"{method} /api/{path}")
+        self.assertEqual(status, expected, f"{method} /api/{path}: {result}")
         return result
 
     def register(self):
@@ -239,6 +240,53 @@ class FinancialIntegrationTests(unittest.TestCase):
         self.assertEqual(records[0]["description"], "'" + description)
         self.assertEqual(records[0]["amount"], "80.25")
         self.call("GET", "reports/transactions.csv?month=13&year=2026", 400, token=self.token)
+
+    def test_weekly_insights_and_monthly_limits_are_scoped_to_the_user(self):
+        self.call("GET", "insights", 401)
+        token = self.token
+        other = self.register()
+        category = self.call("POST", "categories", 201, {"name": "Meals", "type": 2}, token)
+        limits = {"overallLimit": 100, "categories": [{"categoryId": category["id"], "limit": 80}]}
+        self.call("PUT", "insights/limits", 400, limits, other)
+        self.call("PUT", "insights/limits", 400, {**limits, "overallLimit": 0}, token)
+        self.call("PUT", "insights/limits", 400,
+                  {**limits, "categories": limits["categories"] * 2}, token)
+        self.call("PUT", "insights/limits", 204, limits, token)
+
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        monday = today - timedelta(days=today.weekday())
+
+        def post(day, amount):
+            self.call("POST", "transactions", 201, {
+                "description": "Weekly spending test", "amount": amount, "date": f"{day}T00:00:00Z",
+                "type": 2, "accountId": self.origin, "categoryId": category["id"],
+            }, token)
+
+        post(monday - timedelta(days=14), 11)
+        post(monday - timedelta(days=7), 20)
+        post(monday - timedelta(days=1), 41)
+        post(today + timedelta(days=1), 500)
+        historical_in_month = sum(
+            amount for day, amount in [(monday - timedelta(days=14), 11),
+                                       (monday - timedelta(days=7), 20), (monday - timedelta(days=1), 41)]
+            if day.month == today.month
+        )
+        post(today, 80 - historical_in_month)
+        result = self.call("GET", "insights", 200, token=token)
+        self.assertEqual(len(result["weeks"]), 8)
+        latest = result["weeks"][0]
+        self.assertEqual(latest["start"], str(monday - timedelta(days=7)))
+        self.assertEqual(latest["end"], str(monday - timedelta(days=1)))
+        self.assertEqual((latest["total"], latest["previousTotal"], latest["count"]), (61, 11, 2))
+        self.assertEqual((latest["smallCount"], latest["smallTotal"]), (1, 20))
+        self.assertEqual([row["status"] for row in result["budgets"]], ["near", "reached"])
+        self.assertEqual([row["amount"] for row in result["budgets"]], [80, 80])
+
+        isolated = self.call("GET", "insights", 200, token=other)
+        self.assertEqual(isolated["budgets"], [])
+        self.assertEqual(isolated["weeks"][0]["total"], 0)
+        self.call("PUT", "insights/limits", 204, {"overallLimit": None, "categories": []}, token)
+        self.assertEqual(self.call("GET", "insights", 200, token=token)["budgets"], [])
 
     def test_transfer_history_paginates_with_stable_order_and_user_scope(self):
         created_ids = {

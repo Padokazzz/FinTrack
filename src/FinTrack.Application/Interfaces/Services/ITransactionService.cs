@@ -10,6 +10,9 @@ public interface ITransactionService
         TransactionFilterRequest filter,
         CancellationToken cancellationToken = default);
 
+    Task<PaginatedResponse<TransactionResponse>> GetPageAsync(
+        Guid userId, TransactionFilterRequest filter, int page, int pageSize, CancellationToken cancellationToken);
+
     Task<Result<TransactionResponse>> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     Task<Result<TransactionResponse>> CreateAsync(Guid userId, CreateTransactionRequest request, CancellationToken cancellationToken = default);

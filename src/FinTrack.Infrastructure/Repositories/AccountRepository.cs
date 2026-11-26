@@ -23,6 +23,18 @@ public class AccountRepository : IAccountRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<(decimal TotalBalance, int AccountsCount)> GetOverallBalanceAsync(
+        Guid userId, CancellationToken cancellationToken)
+    {
+        var totals = await _context.Accounts
+            .Where(account => account.UserId == userId)
+            .GroupBy(account => account.UserId)
+            .Select(group => new { Balance = group.Sum(account => account.CurrentBalance), Count = group.Count() })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return (totals?.Balance ?? 0m, totals?.Count ?? 0);
+    }
+
     public Task<Account?> GetByIdAndUserIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         return _context.Accounts

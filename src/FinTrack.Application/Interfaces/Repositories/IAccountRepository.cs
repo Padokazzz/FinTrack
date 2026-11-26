@@ -6,6 +6,9 @@ public interface IAccountRepository
 {
     Task<List<Account>> GetAllByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
 
+    Task<(decimal TotalBalance, int AccountsCount)> GetOverallBalanceAsync(
+        Guid userId, CancellationToken cancellationToken);
+
     Task<Account?> GetByIdAndUserIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     Task AddAsync(Account account, CancellationToken cancellationToken = default);

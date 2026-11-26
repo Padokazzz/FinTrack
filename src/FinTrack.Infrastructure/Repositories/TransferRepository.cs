@@ -27,6 +27,23 @@ public class TransferRepository : ITransferRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<(List<Transfer> Items, int TotalCount)> GetPageAsync(
+        Guid userId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var query = _context.Transfers.AsNoTracking().Where(transfer => transfer.UserId == userId);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .Include(transfer => transfer.FromAccount)
+            .Include(transfer => transfer.ToAccount)
+            .OrderByDescending(transfer => transfer.Date)
+            .ThenByDescending(transfer => transfer.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (items, totalCount);
+    }
+
     public Task<Transfer?> GetByIdAndUserIdAsync(
         Guid id,
         Guid userId,

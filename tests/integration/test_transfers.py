@@ -82,6 +82,79 @@ class TransferIntegrationTests(unittest.TestCase):
         total = self.call("GET", "summaries/overall-balance", 200, token=self.token)
         self.assertEqual(total["totalBalance"], 1200)
 
+    def test_transfer_history_paginates_with_stable_order_and_user_scope(self):
+        created_ids = {
+            self.call("POST", "transfers", 201, self.transfer, self.token)["id"]
+            for _ in range(3)
+        }
+        pages = [
+            self.call("GET", f"transfers/page?page={page}&pageSize=2", 200, token=self.token)
+            for page in range(1, 4)
+        ]
+        self.assertEqual([len(result["items"]) for result in pages], [2, 1, 0])
+        self.assertEqual([result["page"] for result in pages], [1, 2, 3])
+        self.assertTrue(all(result["totalCount"] == 3 for result in pages))
+        self.assertCountEqual(
+            [item["id"] for result in pages for item in result["items"]],
+            created_ids,
+        )
+        repeated = self.call("GET", "transfers/page?pageSize=2", 200, token=self.token)
+        self.assertEqual(repeated, pages[0])
+        other = self.call("GET", "transfers/page", 200, token=self.register())
+        self.assertEqual(other, {"items": [], "page": 1, "pageSize": 20, "totalCount": 0})
+        self.call("GET", "transfers/page?pageSize=101", 400, token=self.token)
+        self.call("GET", "transfers/page?page=0", 400, token=self.token)
+        self.call("GET", "transfers/page", 401)
+
+    def test_transaction_page_filters_and_monthly_totals_cover_all_matching_rows(self):
+        income_category = self.call(
+            "POST", "categories", 201, {"name": "Income", "type": 1}, self.token
+        )["id"]
+        expense_category = self.call(
+            "POST", "categories", 201, {"name": "Expense", "type": 2}, self.token
+        )["id"]
+        body = {
+            "description": "Transaction integration test",
+            "date": self.transfer["date"],
+            "accountId": self.origin,
+        }
+        income_ids = [
+            self.call(
+                "POST", "transactions", 201,
+                {**body, "amount": value, "type": 1, "categoryId": income_category},
+                self.token,
+            )["id"]
+            for value in (15, 30)
+        ]
+        self.call(
+            "POST", "transactions", 201,
+            {**body, "amount": 5, "type": 2, "categoryId": expense_category},
+            self.token,
+        )
+        self.call(
+            "POST", "transactions", 201,
+            {**body, "date": "2000-01-01T00:00:00Z", "amount": 100, "type": 1,
+             "categoryId": income_category},
+            self.token,
+        )
+        filters = self.monthly_path.split("?", 1)[1]
+        url = f"transactions/page?{filters}&type=1&categoryId={income_category}&pageSize=1"
+        pages = [self.call("GET", f"{url}&page={page}", 200, token=self.token) for page in (1, 2)]
+        self.assertTrue(all(page["totalCount"] == 2 for page in pages))
+        self.assertCountEqual([page["items"][0]["id"] for page in pages], income_ids)
+        self.call("GET", "transactions/page?month=13", 400, token=self.token)
+
+        summary = self.call("GET", self.monthly_path, 200, token=self.token)
+        self.assertEqual((summary["totalIncome"], summary["totalExpense"], summary["finalBalance"]),
+                         (45, 5, 40))
+        overall = self.call("GET", "summaries/overall-balance", 200, token=self.token)
+        self.assertEqual(overall, {"totalBalance": 1340, "accountsCount": 2})
+        other_token = self.register()
+        other = self.call("GET", "transactions/page", 200, token=other_token)
+        self.assertEqual(other["totalCount"], 0)
+        other_summary = self.call("GET", self.monthly_path, 200, token=other_token)
+        self.assertEqual(other_summary["finalBalance"], 0)
+
     def test_transfer_and_reversal_preserve_total_balance_and_monthly_summary(self):
         monthly = self.call("GET", self.monthly_path, 200, token=self.token)
         created = self.call("POST", "transfers", 201, self.transfer, self.token)

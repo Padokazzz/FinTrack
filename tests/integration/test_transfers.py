@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 import secrets
@@ -53,6 +55,7 @@ class FinancialIntegrationTests(unittest.TestCase):
             "password": secrets.token_urlsafe(24),
         }
         self.call("POST", "auth/register", 200, {"name": "Integration Test", **credentials})
+        self.last_credentials = credentials
         return self.call("POST", "auth/login", 200, credentials)["token"]
 
     def create_account(self, token, name, balance):
@@ -61,6 +64,7 @@ class FinancialIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         self.token = self.register()
+        self.login_credentials = self.last_credentials
         self.origin = self.create_account(self.token, "Origin", 1000)
         self.destination = self.create_account(self.token, "Destination", 200)
         now = datetime.now(timezone.utc)
@@ -173,6 +177,68 @@ class FinancialIntegrationTests(unittest.TestCase):
         self.call("PATCH", path, 204, {"paused": False}, self.token)
         self.assertIn(start, [item["date"] for item in self.agenda()["items"]])
         self.assertEqual(self.call("GET", "transactions", 200, token=self.token), [])
+
+    def test_refresh_session_rotates_the_cookie_and_logout_revokes_it(self):
+        def session_request(path, body=None, cookie=None, send_header=True):
+            headers = {"Content-Type": "application/json"}
+            if send_header:
+                headers["X-FinTrack-Session"] = "1"
+            if cookie:
+                headers["Cookie"] = cookie
+            data = json.dumps(body).encode() if body is not None else None
+            req = Request(f"{BASE_URL}/api/auth/{path}", data=data, headers=headers, method="POST")
+            try:
+                response = urlopen(req, timeout=10)
+            except HTTPError as error:
+                response = error
+            with response:
+                return response.status, response.headers.get("Set-Cookie"), response.read()
+
+        status, original, _ = session_request("login", {
+            "email": self.login_credentials["email"], "password": self.login_credentials["password"],
+        })
+        self.assertEqual(status, 200)
+        self.assertIn("httponly", original.lower())
+        self.assertIn("samesite=strict", original.lower())
+        original = original.split(";", 1)[0]
+        self.assertEqual(session_request("refresh", cookie=original, send_header=False)[0], 400)
+        status, rotated, body = session_request("refresh", cookie=original)
+        self.assertEqual(status, 200)
+        rotated = rotated.split(";", 1)[0]
+        self.assertNotEqual(rotated, original)
+        self.assertEqual(session_request("refresh", cookie=original)[0], 401)
+        self.call("GET", "accounts", 200, token=json.loads(body)["token"])
+        self.assertEqual(session_request("logout", cookie=rotated)[0], 204)
+        self.assertEqual(session_request("refresh", cookie=rotated)[0], 401)
+
+    def test_monthly_category_report_and_csv_match_the_selected_user_and_period(self):
+        category = self.call("POST", "categories", 201, {"name": 'Bills, "fixed"', "type": 2}, self.token)
+        now = datetime.now(timezone.utc)
+        period = f"month={now.month}&year={now.year}"
+        description = '=1+1, "utility"'
+        self.call("POST", "transactions", 201, {
+            "description": description, "amount": 80.25,
+            "date": now.isoformat().replace("+00:00", "Z"), "type": 2,
+            "accountId": self.origin, "categoryId": category["id"],
+        }, self.token)
+        path = f"reports/categories?{period}&type=2"
+        totals = self.call("GET", path, 200, token=self.token)
+        self.assertEqual(totals, [{
+            "categoryId": category["id"], "categoryName": category["name"], "type": 2,
+            "total": Decimal("80.25"), "count": 1,
+        }])
+        self.assertEqual(self.call("GET", path, 200, token=self.register()), [])
+        self.call("GET", f"reports/categories?{period}&type=1", 200, token=self.token)
+        export = Request(f"{BASE_URL}/api/reports/transactions.csv?{period}",
+                         headers={"Authorization": f"Bearer {self.token}"})
+        with urlopen(export, timeout=10) as response:
+            self.assertEqual(response.headers.get_content_type(), "text/csv")
+            records = list(csv.DictReader(io.StringIO(response.read().decode("utf-8-sig"))))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["category"], category["name"])
+        self.assertEqual(records[0]["description"], "'" + description)
+        self.assertEqual(records[0]["amount"], "80.25")
+        self.call("GET", "reports/transactions.csv?month=13&year=2026", 400, token=self.token)
 
     def test_transfer_history_paginates_with_stable_order_and_user_scope(self):
         created_ids = {

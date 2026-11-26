@@ -1,3 +1,5 @@
+using FinTrack.Application.DTOs.Reports;
+using FinTrack.Application.DTOs.Transactions;
 using FinTrack.Domain.Entities;
 using FinTrack.Domain.Enums;
 
@@ -15,6 +17,9 @@ public interface ITransactionRepository
 
     Task<(List<Transaction> Items, int TotalCount)> GetPageAsync(
         Guid userId, int? month, int? year, TransactionType? type, Guid? categoryId, int page, int pageSize, CancellationToken cancellationToken);
+
+    Task<List<CategoryTotal>> GetCategoryTotalsAsync(
+        Guid userId, TransactionFilterRequest filter, CancellationToken cancellationToken);
 
     Task<(decimal Income, decimal Expense)> GetMonthlyTotalsAsync(
         Guid userId, int month, int year, CancellationToken cancellationToken);

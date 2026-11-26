@@ -1,3 +1,5 @@
+using FinTrack.Application.DTOs.Reports;
+using FinTrack.Application.DTOs.Transactions;
 using FinTrack.Application.Interfaces.Repositories;
 using FinTrack.Domain.Entities;
 using FinTrack.Domain.Enums;
@@ -75,6 +77,17 @@ public class TransactionRepository : ITransactionRepository
 
         return (items, totalCount);
     }
+
+    public Task<List<CategoryTotal>> GetCategoryTotalsAsync(
+        Guid userId, TransactionFilterRequest filter, CancellationToken cancellationToken) =>
+        Filter(userId, filter.Month, filter.Year, filter.Type, filter.CategoryId)
+            .GroupBy(transaction => new { transaction.CategoryId, transaction.Category.Name, transaction.Type })
+            .OrderByDescending(group => group.Sum(transaction => transaction.Amount))
+            .ThenBy(group => group.Key.Name)
+            .ThenBy(group => group.Key.CategoryId)
+            .Select(group => new CategoryTotal(group.Key.CategoryId, group.Key.Name,
+                group.Key.Type, group.Sum(transaction => transaction.Amount), group.Count()))
+            .ToListAsync(cancellationToken);
 
     public async Task<(decimal Income, decimal Expense)> GetMonthlyTotalsAsync(
         Guid userId, int month, int year, CancellationToken cancellationToken)

@@ -10,6 +10,8 @@ public class FinTrackDbContext : DbContext
     {
     }
 
+    public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
+
     public DbSet<User> Users => Set<User>();
 
     public DbSet<Account> Accounts => Set<Account>();

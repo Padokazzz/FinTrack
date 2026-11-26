@@ -13,6 +13,7 @@ using FinTrack.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using FinTrack.Infrastructure.Recurrences;
+using FinTrack.Infrastructure.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +28,7 @@ builder.Services.AddSingleton(TimeZoneInfo.FindSystemTimeZoneById(
 builder.Services.AddScoped<RecurrenceService>();
 builder.Services.AddScoped<IRecurrenceService>(services => services.GetRequiredService<RecurrenceService>());
 builder.Services.AddHostedService<RecurrenceWorker>();
+builder.Services.AddScoped<RefreshSessionService>();
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
 builder.Services.AddCors(options =>
@@ -34,7 +36,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy(FrontendCorsPolicy, policy =>
     {
         policy
-            .WithOrigins("http://localhost:5173")
+            .WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? ["http://localhost:5173"])
+            .AllowCredentials()
             .AllowAnyHeader()
             .AllowAnyMethod();
     });

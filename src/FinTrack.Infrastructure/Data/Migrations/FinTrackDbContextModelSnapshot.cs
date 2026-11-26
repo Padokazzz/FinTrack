@@ -219,6 +219,20 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.ToTable("RefreshSessions");
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.SpendingBudget", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("SpendingBudgets");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.Transaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -410,6 +424,15 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FinTrack.Domain.Entities.SpendingBudget", b =>
+                {
+                    b.HasOne("FinTrack.Domain.Entities.User", null)
+                        .WithOne()
+                        .HasForeignKey("FinTrack.Domain.Entities.SpendingBudget", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FinTrack.Domain.Entities.Transaction", b =>

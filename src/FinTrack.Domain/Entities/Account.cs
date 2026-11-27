@@ -9,6 +9,10 @@ public class Account : BaseEntity
 
     public AccountType Type { get; set; }
 
+    public Guid? LinkedBankAccountId { get; set; }
+
+    public decimal? CreditLimit { get; set; }
+
     public decimal InitialBalance { get; set; }
 
     public decimal CurrentBalance { get; set; }

@@ -28,6 +28,8 @@ public class FinTrackDbContext : DbContext
 
     public DbSet<RecurringOccurrence> RecurringOccurrences => Set<RecurringOccurrence>();
 
+    public DbSet<RecurrenceAmortization> RecurrenceAmortizations => Set<RecurrenceAmortization>();
+
     public DbSet<SpendingBudget> SpendingBudgets => Set<SpendingBudget>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

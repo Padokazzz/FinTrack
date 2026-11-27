@@ -25,6 +25,23 @@ public class RecurringOccurrenceConfiguration : IEntityTypeConfiguration<Recurri
     {
         builder.HasKey(occurrence => new { occurrence.RuleId, occurrence.Date });
         builder.Property<uint>("xmin").IsRowVersion();
+        builder.Property(occurrence => occurrence.OriginalAmount).HasPrecision(18, 2);
+        builder.Property(occurrence => occurrence.OriginalDescription).HasMaxLength(150);
+        builder.HasOne<Account>().WithMany().HasForeignKey(occurrence => occurrence.OriginalAccountId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Category>().WithMany().HasForeignKey(occurrence => occurrence.OriginalCategoryId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(occurrence => occurrence.Rule).WithMany().HasForeignKey(occurrence => occurrence.RuleId);
+    }
+}
+
+public class RecurrenceAmortizationConfiguration : IEntityTypeConfiguration<RecurrenceAmortization>
+{
+    public void Configure(EntityTypeBuilder<RecurrenceAmortization> builder)
+    {
+        builder.Property(item => item.Amount).HasPrecision(18, 2);
+        builder.Property(item => item.RemainingBefore).HasPrecision(18, 2);
+        builder.Property(item => item.RemainingAfter).HasPrecision(18, 2);
+        builder.Property(item => item.ComparedPayment).HasPrecision(18, 2);
+        builder.Property(item => item.Savings).HasPrecision(19, 2);
+        builder.HasOne(item => item.Rule).WithMany(rule => rule.Amortizations).HasForeignKey(item => item.RuleId);
     }
 }

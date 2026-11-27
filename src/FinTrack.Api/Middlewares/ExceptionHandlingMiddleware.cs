@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using FinTrack.Infrastructure.Recurrences;
 
 namespace FinTrack.Api.Middlewares;
 
@@ -27,6 +28,15 @@ public class ExceptionHandlingMiddleware
         catch (UnauthorizedAccessException exception)
         {
             await HandleExceptionAsync(context, exception, HttpStatusCode.Unauthorized);
+        }
+        catch (AmortizationIntegrityException exception)
+        {
+            _logger.LogWarning("Amortization history integrity verification failed for schedule {RuleId}.", exception.RuleId);
+            await HandleExceptionAsync(context, exception, HttpStatusCode.Conflict);
+        }
+        catch (AmortizationHistoryExistsException exception)
+        {
+            await HandleExceptionAsync(context, exception, HttpStatusCode.Conflict);
         }
         catch (DbUpdateConcurrencyException exception)
         {

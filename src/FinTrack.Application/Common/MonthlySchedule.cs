@@ -19,6 +19,12 @@ public static class MonthlySchedule
         return candidate < date ? Next(date, start.Day) : candidate;
     }
 
+    public static DateOnly OnOrBefore(DateOnly date, int dayOfMonth)
+    {
+        var candidate = InMonth(date, dayOfMonth);
+        return candidate <= date ? candidate : InMonth(date.AddMonths(-1), dayOfMonth);
+    }
+
     private static DateOnly InMonth(DateOnly month, int dayOfMonth) =>
         new(month.Year, month.Month, Math.Min(dayOfMonth, DateTime.DaysInMonth(month.Year, month.Month)));
 }

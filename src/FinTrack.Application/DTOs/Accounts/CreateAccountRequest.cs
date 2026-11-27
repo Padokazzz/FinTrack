@@ -8,5 +8,11 @@ public class CreateAccountRequest
 
     public AccountType Type { get; set; }
 
+    public Guid? LinkedBankAccountId { get; set; }
+
+    public decimal? CreditLimit { get; set; }
+
+    public decimal? InitialUsedCredit { get; set; }
+
     public decimal InitialBalance { get; set; }
 }

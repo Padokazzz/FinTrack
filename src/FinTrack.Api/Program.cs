@@ -1,5 +1,7 @@
 using System.Net;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Data;
 using FinTrack.Infrastructure.Privacy;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -22,7 +24,9 @@ using Microsoft.OpenApi;
 using FinTrack.Infrastructure.Recurrences;
 using FinTrack.Infrastructure.Authentication;
 
-var builder = WebApplication.CreateBuilder(args);
+const string InitializeHistoryFlag = "--initialize-amortization-integrity";
+var initializeHistory = args.Contains(InitializeHistoryFlag, StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(args.Where(argument => argument != InitializeHistoryFlag).ToArray());
 
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
 
@@ -42,6 +46,17 @@ if (builder.Environment.IsProduction())
     if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
         throw new InvalidOperationException("Run database migrations separately in production.");
 }
+
+var historyKey = builder.Configuration["HistoryIntegrity:Key"];
+if (historyKey is null && builder.Environment.IsDevelopment())
+{
+    var devSecret = builder.Configuration["Jwt:Secret"] ?? "fintrack-development-only";
+    historyKey = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes($"development:amortization:{devSecret}")));
+}
+var historyKeyBytes = new byte[32];
+if (historyKey is null || !Convert.TryFromBase64String(historyKey, historyKeyBytes, out var historyKeySize) || historyKeySize != 32)
+    throw new InvalidOperationException("Configure HistoryIntegrity__Key as a base64-encoded 32-byte secret.");
+builder.Services.AddSingleton(new AmortizationIntegrity(historyKeyBytes));
 
 var emailVerification = builder.Configuration.GetSection("EmailVerification").Get<EmailVerificationSettings>() ?? new();
 if (emailVerification.InactiveDays < 1 || emailVerification.VerifyEveryDays is < 1 or > 365 ||
@@ -187,6 +202,22 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
     using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<FinTrackDbContext>();
     dbContext.Database.Migrate();
+}
+
+if (initializeHistory)
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<FinTrackDbContext>();
+    var integrity = scope.ServiceProvider.GetRequiredService<AmortizationIntegrity>();
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+    var rules = await db.RecurringRules.Include(rule => rule.Amortizations)
+        .Where(rule => rule.AmortizationSignature == null).ToListAsync();
+    foreach (var rule in rules)
+        rule.AmortizationSignature = integrity.Sign(rule);
+    await db.SaveChangesAsync();
+    await transaction.CommitAsync();
+    Console.WriteLine($"Initialized amortization signatures for {rules.Count} schedules.");
+    return;
 }
 
 if (trustedProxies.Length > 0)

@@ -3,10 +3,11 @@ using FinTrack.Application.Interfaces.Security;
 using FinTrack.Infrastructure.Data;
 using FinTrack.Infrastructure.Insights;
 using Microsoft.EntityFrameworkCore;
+using FinTrack.Infrastructure.Recurrences;
 
 namespace FinTrack.Infrastructure.Privacy;
 
-public sealed class PrivacyService(FinTrackDbContext db, IPasswordHasher passwords, SpendingInsights insights)
+public sealed class PrivacyService(FinTrackDbContext db, IPasswordHasher passwords, SpendingInsights insights, AmortizationIntegrity integrity)
 {
     public async Task<object?> ExportAsync(Guid userId, string password, CancellationToken ct)
     {
@@ -16,7 +17,7 @@ public sealed class PrivacyService(FinTrackDbContext db, IPasswordHasher passwor
             return null;
 
         var accounts = await db.Accounts.Where(x => x.UserId == userId)
-            .Select(x => new { x.Id, x.Name, x.Type, x.InitialBalance, x.CurrentBalance, x.CreatedAt, x.UpdatedAt })
+            .Select(x => new { x.Id, x.Name, x.Type, x.InitialBalance, x.CurrentBalance, x.CreditLimit, x.LinkedBankAccountId, x.CreatedAt, x.UpdatedAt })
             .ToListAsync(ct);
         var categories = await db.Categories.Where(x => x.UserId == userId)
             .Select(x => new { x.Id, x.Name, x.Type, x.CreatedAt, x.UpdatedAt }).ToListAsync(ct);
@@ -30,10 +31,15 @@ public sealed class PrivacyService(FinTrackDbContext db, IPasswordHasher passwor
             .Select(x => new
             {
                 x.Id, x.AccountId, x.CategoryId, x.Description, x.Type, x.Amount, x.StartsOn,
-                x.NextDate, x.Automatic, x.Paused, x.CreatedAt, x.UpdatedAt
+                x.NextDate, x.Automatic, x.Paused, x.EndsOn, x.PaymentMethod, x.CreatedAt, x.UpdatedAt
             }).ToListAsync(ct);
         var occurrences = await db.RecurringOccurrences.Where(x => x.Rule.UserId == userId)
-            .Select(x => new { x.RuleId, x.Date, x.PostedAt }).ToListAsync(ct);
+            .Select(x => new { x.RuleId, x.Date, x.PostedAt, x.OriginalAccountId, x.OriginalCategoryId, x.OriginalDescription, x.OriginalType, x.OriginalAmount, x.OriginalPaymentMethod }).ToListAsync(ct);
+        var verifiedRules = await db.RecurringRules.AsNoTracking().Include(rule => rule.Amortizations)
+            .Where(rule => rule.UserId == userId).ToListAsync(ct);
+        verifiedRules.ForEach(integrity.Verify);
+        var amortizations = verifiedRules.SelectMany(rule => rule.Amortizations)
+            .Select(x => new { x.Id, x.RuleId, x.Date, x.Amount, x.Installments, x.RemainingBefore, x.RemainingAfter, x.ComparedPayment, x.Savings }).ToList();
         var emailVerification = await db.EmailVerifications.Where(x => x.UserId == userId)
             .Select(x => new { x.VerifiedAt, x.LastActivityAt }).SingleOrDefaultAsync(ct);
         var limits = await insights.GetLimitsAsync(userId, ct);
@@ -43,7 +49,7 @@ public sealed class PrivacyService(FinTrackDbContext db, IPasswordHasher passwor
         {
             schemaVersion = 1,
             profile = new { user.Id, user.Name, user.Email, user.CreatedAt, user.UpdatedAt },
-            accounts, categories, transactions, transfers, recurrences, occurrences, limits, emailVerification
+            accounts, categories, transactions, transfers, recurrences, occurrences, amortizations, limits, emailVerification
         };
     }
 

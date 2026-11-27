@@ -101,6 +101,38 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.ToTable("Categories", (string)null);
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.EmailVerification", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ChallengeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("ChallengeId")
+                        .IsUnique();
+
+                    b.ToTable("EmailVerifications");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.RecurringOccurrence", b =>
                 {
                     b.Property<Guid>("RuleId")
@@ -381,6 +413,15 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FinTrack.Domain.Entities.EmailVerification", b =>
+                {
+                    b.HasOne("FinTrack.Domain.Entities.User", null)
+                        .WithOne()
+                        .HasForeignKey("FinTrack.Domain.Entities.EmailVerification", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FinTrack.Domain.Entities.RecurringOccurrence", b =>

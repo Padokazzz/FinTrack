@@ -1,4 +1,8 @@
+using System.Security.Claims;
 using System.Text;
+using FinTrack.Infrastructure.Data;
+using FinTrack.Infrastructure.Authentication;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -17,6 +21,19 @@ public static class AuthenticationExtensions
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var db = context.HttpContext.RequestServices.GetRequiredService<FinTrackDbContext>();
+                        var verification = context.HttpContext.RequestServices.GetRequiredService<EmailVerificationService>();
+                        if (!Guid.TryParse(context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ||
+                            !await db.Users.AnyAsync(x => x.Id == id, context.HttpContext.RequestAborted) ||
+                            !await verification.AcceptSessionAsync(id, touch: false, context.HttpContext.RequestAborted))
+                            context.Fail("Session verification is required.");
+                    }
+                };
+
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

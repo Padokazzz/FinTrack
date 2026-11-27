@@ -10,7 +10,7 @@ namespace FinTrack.Infrastructure.Authentication;
 
 public record RefreshCookie(string Value, DateTime ExpiresAt);
 
-public class RefreshSessionService(FinTrackDbContext context, IJwtTokenGenerator jwt, TimeProvider clock)
+public class RefreshSessionService(FinTrackDbContext context, IJwtTokenGenerator jwt, TimeProvider clock, EmailVerificationService verification)
 {
     public async Task<RefreshCookie> StartAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -28,7 +28,7 @@ public class RefreshSessionService(FinTrackDbContext context, IJwtTokenGenerator
         string? value, CancellationToken cancellationToken)
     {
         var session = await FindAsync(value, cancellationToken);
-        if (session is null)
+        if (session is null || !await verification.AcceptSessionAsync(session.UserId, touch: true, cancellationToken))
         {
             return null;
         }

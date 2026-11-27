@@ -276,3 +276,41 @@ Desenvolvido por [Leonardo Padilha](https://www.leonardopadilha.com) como projet
   ```
 
   Forneça a conexão de migração pelo ambiente do comando, sem incluí-la no histórico do shell. Na API em execução, `ConnectionStrings__DefaultConnection` deve usar uma credencial diferente, com acesso apenas às tabelas e sequências da aplicação, sem permissões de criação ou alteração de esquema.
+
+### Direitos do usuário
+
+O titular autenticado pode solicitar `POST /api/auth/privacy/export` ou
+`POST /api/auth/privacy/delete` informando a senha atual. Há um limite
+compartilhado de cinco tentativas por minuto por usuário.
+A exportação retorna, em JSON versionado, cadastro, contas financeiras,
+categorias, lançamentos, transferências, recorrências, ocorrências e limites.
+A exclusão é transacional no banco ativo, revoga as sessões de renovação e
+impede o uso de tokens de acesso vinculados ao cadastro excluído.
+
+Pedidos que envolvam logs, backups, retenção excepcional ou correção de
+dados devem ser tratados pelo canal de privacidade do responsável.
+
+### Código de segurança por e-mail
+
+Em produção a confirmação de e-mail é obrigatória. O cadastro e os acessos
+que exigem confirmação respondem com `202` e um identificador de desafio.
+A rota `POST /api/auth/verify-email` emite a sessão somente após validar o código.
+O código expira em dez minutos, tem cinco tentativas e só pode ser usado uma vez.
+Para receber outro código, faça login novamente. Há uma espera de um minuto por conta.
+
+Configure `EmailVerification__From` com um remetente validado e use
+`EmailVerification__BrevoApiKey` como segredo do servidor para envio via HTTPS.
+Também é possível usar SMTP com STARTTLS por meio de `EmailVerification__Host`,
+`EmailVerification__Port`, `EmailVerification__Username` e
+`EmailVerification__Password`. O Render Free restringe as portas SMTP usuais,
+por isso o envio via HTTPS é a configuração prevista para o piloto.
+
+Por padrão, o código é solicitado após 14 dias sem login ou renovação da
+sessão e a cada 30 dias desde a última confirmação. Os prazos podem ser ajustados
+com `EmailVerification__InactiveDays` e `EmailVerification__VerifyEveryDays`.
+Contas já cadastradas passam pela confirmação na primeira entrada após ativação.
+
+Em desenvolvimento, é possível gravar mensagens de teste em uma pasta local com
+`EmailVerification__PickupDirectory` e um remetente fictício. O Compose de
+desenvolvimento desativa a confirmação por padrão para preservar os fluxos de
+teste sem remetente. Aplique a migração de e-mail antes do deploy.

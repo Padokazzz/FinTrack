@@ -25,6 +25,35 @@ public class RecurrencesController(IRecurrenceService service, ICurrentUserServi
         return result.IsSuccess ? StatusCode(StatusCodes.Status201Created, result.Value) : BadRequest(new { message = result.Error });
     }
 
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> Update(Guid id, CreateRecurrenceRequest request, CancellationToken cancellationToken)
+    {
+        var result = await service.UpdateAsync(currentUser.UserId, id, request, cancellationToken);
+        return result.IsSuccess ? NoContent() : BadRequest(new { message = result.Error });
+    }
+
+    [HttpGet("{id:guid}/amortizations")]
+    public async Task<IActionResult> ListAmortizations(Guid id, CancellationToken cancellationToken)
+    {
+        var items = await service.ListAmortizationsAsync(currentUser.UserId, id, cancellationToken);
+        return items is null ? NotFound() : Ok(items);
+    }
+
+    [HttpPost("{id:guid}/amortizations")]
+    public async Task<IActionResult> RecordAmortization(Guid id, RecordAmortizationRequest request, CancellationToken cancellationToken)
+    {
+        var result = await service.RecordAmortizationAsync(currentUser.UserId, id, request, cancellationToken);
+        return result.IsSuccess ? NoContent() : BadRequest(new { message = result.Error });
+    }
+
+    [HttpPut("{id:guid}/amortizations/{amortizationId:guid}/comparison")]
+    public async Task<IActionResult> SaveAmortizationComparison(Guid id, Guid amortizationId,
+        AmortizationComparison request, CancellationToken cancellationToken)
+    {
+        var result = await service.SaveAmortizationComparisonAsync(currentUser.UserId, id, amortizationId, request, cancellationToken);
+        return result.IsSuccess ? NoContent() : BadRequest(new { message = result.Error });
+    }
+
     [HttpPatch("{id:guid}")]
     public async Task<IActionResult> SetPaused(Guid id, RecurrenceStatusRequest request, CancellationToken cancellationToken) =>
         await service.SetPausedAsync(currentUser.UserId, id, request.Paused, cancellationToken) ? NoContent() : NotFound();

@@ -3,12 +3,14 @@ import io
 import json
 import os
 import secrets
+import subprocess
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 from time import monotonic, sleep
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -114,6 +116,58 @@ class FinancialIntegrationTests(unittest.TestCase):
             sleep(0.25)
         self.fail("The recurring worker did not produce the expected result.")
 
+    def test_linked_credit_card_tracks_purchases_and_payments_without_double_counting(self):
+        card = self.call("POST", "accounts", 201, {
+            "name": "Bank credit card", "type": 4, "linkedBankAccountId": self.origin,
+            "creditLimit": 500, "initialUsedCredit": 80,
+        }, self.token)
+        self.assertEqual((card["usedCredit"], card["availableCredit"]), (80, 420))
+        self.assertEqual(card["linkedBankAccountId"], self.origin)
+
+        category = self.call("POST", "categories", 201, {
+            "name": "Streaming", "type": 2,
+        }, self.token)
+        purchase = {
+            "description": "Monthly subscription", "type": 2, "amount": 50,
+            "accountId": card["id"], "categoryId": category["id"], "date": self.transfer["date"],
+        }
+        self.call("POST", "transactions", 201, purchase, self.token)
+        card_path = f"accounts/{card['id']}"
+        card = self.call("GET", card_path, 200, token=self.token)
+        self.assertEqual((card["usedCredit"], card["availableCredit"]), (130, 370))
+
+        self.call("POST", "transfers", 201, {
+            **self.transfer, "description": "Card payment", "amount": 100, "toAccountId": card["id"],
+        }, self.token)
+        card = self.call("GET", card_path, 200, token=self.token)
+        self.assertEqual((card["usedCredit"], card["availableCredit"]), (30, 470))
+        bank = self.call("GET", f"accounts/{self.origin}", 200, token=self.token)
+        self.assertEqual(bank["currentBalance"], 900)
+        summary = self.call("GET", self.monthly_path, 200, token=self.token)
+        self.assertEqual(summary["totalExpense"], 50)
+
+    def test_card_links_are_scoped_and_unlink_when_bank_is_deleted(self):
+        another_user = self.register()
+        foreign_bank = self.create_account(another_user, "Other user's bank", 100)
+        card_request = {"name": "Credit card", "type": 4, "creditLimit": 100}
+        self.call("POST", "accounts", 400, {
+            **card_request, "linkedBankAccountId": foreign_bank,
+        }, self.token)
+        self.call("POST", "accounts", 400, {
+            **card_request, "creditLimit": -1,
+        }, self.token)
+        card = self.call("POST", "accounts", 201, {
+            **card_request, "linkedBankAccountId": self.destination,
+        }, self.token)
+        card_path = f"accounts/{card['id']}"
+        self.call("PUT", card_path, 400, {
+            **card_request, "linkedBankAccountId": card["id"],
+        }, self.token)
+        self.call("DELETE", f"accounts/{self.destination}", 204, token=self.token)
+        card = self.call("GET", card_path, 200, token=self.token)
+        self.assertIsNone(card["linkedBankAccountId"])
+        self.assertEqual(card["availableCredit"], 100)
+
     def test_automatic_recurrence_recovers_missed_months_and_projects_the_next(self):
         today = date.fromisoformat(self.agenda()["today"])
         previous_month = today.replace(day=1) - timedelta(days=1)
@@ -136,6 +190,128 @@ class FinancialIntegrationTests(unittest.TestCase):
         self.assertEqual(projection["projectedBalance"], expected)
         self.call("DELETE", f"recurrences/{rule['id']}", 204, token=self.token)
         self.assertEqual(len(self.call("GET", "transactions", 200, token=self.token)), 2)
+
+    def test_financing_keeps_the_bank_and_payment_method_and_stops_after_the_last_installment(self):
+        today = date.fromisoformat(self.agenda()["today"])
+        first = today.replace(day=1) - timedelta(days=1)
+        first = first.replace(day=1)
+        body = {
+            **self.recurrence_request(True, 100, first.isoformat(), transaction_type=2),
+            "description": "Vehicle financing", "paymentMethod": 1, "endsOn": first.isoformat(),
+        }
+        cash = self.call("POST", "accounts", 201, {
+            "name": "Cash", "type": 3, "initialBalance": 200,
+        }, self.token)
+        self.call("POST", "recurrences", 400, {**body, "accountId": cash["id"]}, self.token)
+        self.call("POST", "recurrences", 400, {**body, "paymentMethod": 99}, self.token)
+        self.call("POST", "recurrences", 400, {
+            **body, "endsOn": (first - timedelta(days=1)).isoformat(),
+        }, self.token)
+        rule = self.call("POST", "recurrences", 201, body, self.token)
+        self.assertEqual((rule["paymentMethod"], rule["accountId"], rule["endsOn"]),
+                         (1, self.origin, first.isoformat()))
+
+        rows = self.wait_for(
+            lambda: self.call("GET", "transactions", 200, token=self.token),
+            lambda result: len(result) > 0,
+        )
+        self.assertEqual([(row["date"][:10], row["amount"]) for row in rows],
+                         [(first.isoformat(), 100)])
+        schedule = next(item for item in self.call("GET", "recurrences", 200, token=self.token)
+                        if item["id"] == rule["id"])
+        self.assertGreater(schedule["nextDate"], schedule["endsOn"])
+        self.assertTrue(all(item["ruleId"] != rule["id"] for item in self.agenda()["items"]))
+
+    def test_editing_only_changes_future_entries_and_can_confirm_an_existing_pending_installment(self):
+        today = self.agenda()["today"]
+        body = self.recurrence_request(False, 50, today, transaction_type=2)
+        rule = self.call("POST", "recurrences", 201, body, self.token)
+        self.wait_for(self.agenda, lambda data: any(item["pending"] for item in data["items"]))
+        path = f"recurrences/{rule['id']}"
+        self.call("PUT", path, 204, {
+            **body, "accountId": self.destination, "amount": 80, "automatic": True,
+        }, self.token)
+        item = next(item for item in self.agenda()["items"] if item["pending"])
+        self.assertEqual((item["accountId"], item["amount"]), (self.origin, 50))
+        confirm = f"{path}/occurrences/{today}/confirm"
+        self.call("POST", confirm, 204, {"amount": None}, self.token)
+        self.call("POST", confirm, 204, {"amount": None}, self.token)
+        rows = self.call("GET", "transactions", 200, token=self.token)
+        self.assertEqual([(row["accountId"], row["amount"]) for row in rows], [(self.origin, 50)])
+        updated = next(item for item in self.call("GET", "recurrences", 200, token=self.token)
+                       if item["id"] == rule["id"])
+        self.assertEqual((updated["accountId"], updated["amount"]), (self.destination, 80))
+
+    def test_amortization_history_is_idempotent_and_removes_only_final_installments(self):
+        today = date.fromisoformat(self.agenda()["today"])
+        first_month = today.replace(day=1) + timedelta(days=32)
+        first = first_month.replace(day=1)
+        second = (first + timedelta(days=32)).replace(day=1)
+        third = (second + timedelta(days=32)).replace(day=1)
+        rule = self.call("POST", "recurrences", 201, {
+            **self.recurrence_request(False, 100, first.isoformat(), transaction_type=2),
+            "endsOn": third.isoformat(),
+        }, self.token)
+        path = f"recurrences/{rule['id']}/amortizations"
+        another = self.register()
+        self.call("GET", path, 404, token=another)
+        amount_only = {"id": str(uuid4()), "date": today.isoformat(), "amount": 30, "installments": 0}
+        self.call("POST", path, 204, amount_only, self.token)
+        self.call("POST", path, 400, {**amount_only, "id": str(uuid4()), "installments": 4}, self.token)
+        reduction = {**amount_only, "id": str(uuid4()), "amount": None, "installments": 2}
+        self.call("POST", path, 204, reduction, self.token)
+        self.call("POST", path, 204, reduction, self.token)
+        stored = self.call("GET", path, 200, token=self.token)
+        self.assertCountEqual([{key: item[key] for key in amount_only} for item in stored], [amount_only, reduction])
+        self.assertTrue(all(item["savings"] is None for item in stored))
+
+        comparison_path = f"{path}/{amount_only['id']}/comparison"
+        comparison = {"remainingBefore": 300, "payment": 30, "remainingAfter": 240}
+        self.call("PUT", comparison_path, 400, comparison, another)
+        self.call("PUT", comparison_path, 400, {**comparison, "payment": 35}, self.token)
+        self.call("PUT", comparison_path, 400, {**comparison, "remainingAfter": -1}, self.token)
+        self.call("PUT", comparison_path, 204, comparison, self.token)
+        self.call("PUT", f"{path}/{reduction['id']}/comparison", 204, {
+            "remainingBefore": 240, "payment": 180, "remainingAfter": 0,
+        }, self.token)
+        stored = self.call("GET", path, 200, token=self.token)
+        self.assertEqual(sum(item["savings"] for item in stored), 90)
+        calculated = next(item for item in stored if item["id"] == amount_only["id"])
+        self.assertEqual((calculated["remainingBefore"], calculated["comparedPayment"], calculated["remainingAfter"]),
+                         (300, 30, 240))
+        updated = next(item for item in self.call("GET", "recurrences", 200, token=self.token)
+                       if item["id"] == rule["id"])
+        self.assertEqual(updated["endsOn"], first.isoformat())
+        self.assertEqual(self.call("GET", "transactions", 200, token=self.token), [])
+
+    @unittest.skipUnless(os.getenv("FINTRACK_INTEGRITY_TEST_PSQL"), "Requires a temporary local PostgreSQL fixture")
+    def test_history_rejects_unsigned_database_changes_and_row_removal(self):
+        today = self.agenda()["today"]
+        rule = self.call("POST", "recurrences", 201,
+                         self.recurrence_request(False, 100, today, transaction_type=2), self.token)
+        history = f"recurrences/{rule['id']}/amortizations"
+        payment = {"id": str(uuid4()), "date": today, "amount": 30, "installments": 0}
+        self.call("POST", history, 204, payment, self.token)
+        self.assertEqual(self.call("GET", history, 200, token=self.token)[0]["amount"], 30)
+        self.call("DELETE", f"recurrences/{rule['id']}", 409, token=self.token)
+
+        def apply_fixture_change(sql):
+            subprocess.run([
+                os.environ["FINTRACK_INTEGRITY_TEST_PSQL"], "-v", "ON_ERROR_STOP=1",
+                "-h", os.environ["FINTRACK_INTEGRITY_TEST_PG_SOCKET"], "-U", "fintrack", "-d", "postgres",
+                "-c", sql,
+            ], check=True, capture_output=True)
+
+        apply_fixture_change(f"""UPDATE "RecurrenceAmortizations" SET "Amount" = 31 WHERE "Id" = '{payment['id']}'""")
+        self.call("GET", history, 409, token=self.token)
+        self.call("POST", history, 409, {**payment, "id": str(uuid4())}, self.token)
+        self.call("PUT", f"{history}/{payment['id']}/comparison", 409, {
+            "remainingBefore": 100, "remainingAfter": 60, "payment": 31,
+        }, self.token)
+        apply_fixture_change(f"""UPDATE "RecurrenceAmortizations" SET "Amount" = 30 WHERE "Id" = '{payment['id']}'""")
+        self.call("GET", history, 200, token=self.token)
+        apply_fixture_change(f"""DELETE FROM "RecurrenceAmortizations" WHERE "Id" = '{payment['id']}'""")
+        self.call("GET", history, 409, token=self.token)
 
     def test_manual_recurrence_requires_the_actual_value_and_posts_only_once(self):
         today = self.agenda()["today"]

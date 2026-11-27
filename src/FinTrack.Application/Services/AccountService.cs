@@ -3,6 +3,7 @@ using FinTrack.Application.DTOs.Accounts;
 using FinTrack.Application.Interfaces.Repositories;
 using FinTrack.Application.Interfaces.Services;
 using FinTrack.Domain.Entities;
+using FinTrack.Domain.Enums;
 
 namespace FinTrack.Application.Services;
 
@@ -40,12 +41,24 @@ public class AccountService : IAccountService
 
     public async Task<Result<AccountResponse>> CreateAsync(Guid userId, CreateAccountRequest request, CancellationToken cancellationToken = default)
     {
+        var error = await ValidateCardAsync(null, userId, request.Type, request.LinkedBankAccountId, request.CreditLimit, cancellationToken);
+        if (error is not null)
+            return Result<AccountResponse>.Failure(error);
+
+        if (request.InitialUsedCredit is decimal used &&
+            (request.Type != AccountType.CreditCard || request.InitialBalance != 0 ||
+             used < 0 || used > 9_999_999_999_999_999.99m || decimal.Round(used, 2) != used))
+            return Result<AccountResponse>.Failure("Enter a valid initial amount used on the card.");
+
+        var openingBalance = -request.InitialUsedCredit ?? request.InitialBalance;
         var account = new Account
         {
             Name = request.Name,
             Type = request.Type,
-            InitialBalance = request.InitialBalance,
-            CurrentBalance = request.InitialBalance,
+            LinkedBankAccountId = request.LinkedBankAccountId,
+            CreditLimit = request.CreditLimit,
+            InitialBalance = openingBalance,
+            CurrentBalance = openingBalance,
             UserId = userId
         };
 
@@ -64,6 +77,19 @@ public class AccountService : IAccountService
             return Result<AccountResponse>.Failure("Account not found.");
         }
 
+        var error = await ValidateCardAsync(id, userId, request.Type, request.LinkedBankAccountId, request.CreditLimit, cancellationToken);
+        if (error is not null)
+            return Result<AccountResponse>.Failure(error);
+
+        if (IsBankAccount(account.Type) && !IsBankAccount(request.Type))
+        {
+            var accounts = await _accountRepository.GetAllByUserIdAsync(userId, cancellationToken);
+            if (accounts.Any(card => card.LinkedBankAccountId == id))
+                return Result<AccountResponse>.Failure("Unlink the cards before changing this account type.");
+        }
+
+        account.LinkedBankAccountId = request.LinkedBankAccountId;
+        account.CreditLimit = request.CreditLimit;
         account.Name = request.Name;
         account.Type = request.Type;
         account.UpdatedAt = DateTime.UtcNow;
@@ -89,6 +115,27 @@ public class AccountService : IAccountService
         return Result.Success();
     }
 
+    private async Task<string?> ValidateCardAsync(Guid? id, Guid userId, AccountType type,
+        Guid? bankId, decimal? limit, CancellationToken cancellationToken)
+    {
+        if (type != AccountType.CreditCard && (bankId.HasValue || limit.HasValue))
+            return "Only credit cards can have a linked bank account or a credit limit.";
+
+        if (limit is decimal amount && (amount <= 0 || amount > 9_999_999_999_999_999.99m || decimal.Round(amount, 2) != amount))
+            return "Enter a positive credit limit with up to two decimal places.";
+
+        if (bankId is not Guid linkedId)
+            return null;
+
+        if (linkedId == id)
+            return "Choose another account to link to the card.";
+
+        var bank = await _accountRepository.GetByIdAndUserIdAsync(linkedId, userId, cancellationToken);
+        return bank is not null && IsBankAccount(bank.Type) ? null : "Choose one of your checking or savings accounts.";
+    }
+
+    private static bool IsBankAccount(AccountType type) => type is AccountType.Checking or AccountType.Savings;
+
     private static AccountResponse MapToResponse(Account account)
     {
         return new AccountResponse
@@ -96,6 +143,8 @@ public class AccountService : IAccountService
             Id = account.Id,
             Name = account.Name,
             Type = account.Type,
+            LinkedBankAccountId = account.LinkedBankAccountId,
+            CreditLimit = account.CreditLimit,
             InitialBalance = account.InitialBalance,
             CurrentBalance = account.CurrentBalance
         };

@@ -36,6 +36,13 @@ public class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.Property(account => account.UpdatedAt);
 
+        builder.Property(account => account.CreditLimit).HasPrecision(18, 2);
+
+        builder.HasOne<Account>()
+            .WithMany()
+            .HasForeignKey(account => account.LinkedBankAccountId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         builder.HasOne(account => account.User)
             .WithMany(user => user.Accounts)
             .HasForeignKey(account => account.UserId)

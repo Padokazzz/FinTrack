@@ -13,6 +13,10 @@ public class RecurringRule : BaseEntity
     public decimal? Amount { get; set; }
     public DateOnly StartsOn { get; set; }
     public DateOnly NextDate { get; set; }
+    public DateOnly? EndsOn { get; set; }
+    public RecurringPaymentMethod? PaymentMethod { get; set; }
     public bool Automatic { get; set; }
+    public byte[]? AmortizationSignature { get; set; }
+    public ICollection<RecurrenceAmortization> Amortizations { get; } = new List<RecurrenceAmortization>();
     public bool Paused { get; set; }
 }

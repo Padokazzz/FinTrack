@@ -31,6 +31,10 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("CreditLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<decimal>("CurrentBalance")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -38,6 +42,9 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Property<decimal>("InitialBalance")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("LinkedBankAccountId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -62,6 +69,8 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .HasColumnName("xmin");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LinkedBankAccountId");
 
                     b.HasIndex("UserId");
 
@@ -133,6 +142,48 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.ToTable("EmailVerifications");
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.RecurrenceAmortization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("ComparedPayment")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Installments")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("RemainingAfter")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("RemainingBefore")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("RuleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Savings")
+                        .HasPrecision(19, 2)
+                        .HasColumnType("numeric(19,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RuleId");
+
+                    b.ToTable("RecurrenceAmortizations");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.RecurringOccurrence", b =>
                 {
                     b.Property<Guid>("RuleId")
@@ -140,6 +191,26 @@ namespace FinTrack.Infrastructure.Data.Migrations
 
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
+
+                    b.Property<Guid?>("OriginalAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("OriginalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("OriginalCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("OriginalDescription")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<int?>("OriginalPaymentMethod")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("OriginalType")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("PostedAt")
                         .HasColumnType("timestamp with time zone");
@@ -152,6 +223,10 @@ namespace FinTrack.Infrastructure.Data.Migrations
 
                     b.HasKey("RuleId", "Date");
 
+                    b.HasIndex("OriginalAccountId");
+
+                    b.HasIndex("OriginalCategoryId");
+
                     b.ToTable("RecurringOccurrences");
                 });
 
@@ -163,6 +238,9 @@ namespace FinTrack.Infrastructure.Data.Migrations
 
                     b.Property<Guid>("AccountId")
                         .HasColumnType("uuid");
+
+                    b.Property<byte[]>("AmortizationSignature")
+                        .HasColumnType("bytea");
 
                     b.Property<decimal?>("Amount")
                         .HasPrecision(18, 2)
@@ -182,11 +260,17 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<DateOnly?>("EndsOn")
+                        .HasColumnType("date");
+
                     b.Property<DateOnly>("NextDate")
                         .HasColumnType("date");
 
                     b.Property<bool>("Paused")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("PaymentMethod")
+                        .HasColumnType("integer");
 
                     b.Property<DateOnly>("StartsOn")
                         .HasColumnType("date");
@@ -417,6 +501,11 @@ namespace FinTrack.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("FinTrack.Domain.Entities.Account", b =>
                 {
+                    b.HasOne("FinTrack.Domain.Entities.Account", null)
+                        .WithMany()
+                        .HasForeignKey("LinkedBankAccountId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("FinTrack.Domain.Entities.User", "User")
                         .WithMany("Accounts")
                         .HasForeignKey("UserId")
@@ -446,8 +535,29 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("FinTrack.Domain.Entities.RecurrenceAmortization", b =>
+                {
+                    b.HasOne("FinTrack.Domain.Entities.RecurringRule", "Rule")
+                        .WithMany("Amortizations")
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Rule");
+                });
+
             modelBuilder.Entity("FinTrack.Domain.Entities.RecurringOccurrence", b =>
                 {
+                    b.HasOne("FinTrack.Domain.Entities.Account", null)
+                        .WithMany()
+                        .HasForeignKey("OriginalAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FinTrack.Domain.Entities.Category", null)
+                        .WithMany()
+                        .HasForeignKey("OriginalCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FinTrack.Domain.Entities.RecurringRule", "Rule")
                         .WithMany()
                         .HasForeignKey("RuleId")
@@ -564,6 +674,11 @@ namespace FinTrack.Infrastructure.Data.Migrations
             modelBuilder.Entity("FinTrack.Domain.Entities.Category", b =>
                 {
                     b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("FinTrack.Domain.Entities.RecurringRule", b =>
+                {
+                    b.Navigation("Amortizations");
                 });
 
             modelBuilder.Entity("FinTrack.Domain.Entities.User", b =>

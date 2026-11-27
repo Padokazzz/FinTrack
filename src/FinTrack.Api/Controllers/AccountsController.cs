@@ -84,7 +84,9 @@ public class AccountsController : ControllerBase
 
         if (result.IsFailure)
         {
-            return NotFound(new { message = result.Error });
+            return result.Error == "Account not found."
+                ? NotFound(new { message = result.Error })
+                : BadRequest(new { message = result.Error });
         }
 
         return Ok(result.Value);

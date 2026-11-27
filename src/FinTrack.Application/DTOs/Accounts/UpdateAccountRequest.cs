@@ -7,4 +7,8 @@ public class UpdateAccountRequest
     public string Name { get; set; } = string.Empty;
 
     public AccountType Type { get; set; }
+
+    public Guid? LinkedBankAccountId { get; set; }
+
+    public decimal? CreditLimit { get; set; }
 }

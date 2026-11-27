@@ -17,6 +17,12 @@ public static class DependencyInjectionExtensions
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
+        if (string.IsNullOrWhiteSpace(connectionString) &&
+            configuration["DATABASE_URL"] is { Length: > 0 } databaseUrl)
+        {
+            connectionString = PostgresConnection.FromUrl(databaseUrl);
+        }
+
         services.AddDbContext<FinTrackDbContext>(options =>
             options.UseNpgsql(connectionString));
 

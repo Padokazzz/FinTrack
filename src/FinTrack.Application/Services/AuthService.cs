@@ -76,6 +76,7 @@ public class AuthService : IAuthService
         return new AuthResponse
         {
             UserId = user.Id,
+            PasswordVersion = user.PasswordVersion,
             Name = user.Name,
             Email = user.Email,
             Token = _jwtTokenGenerator.GenerateToken(user)

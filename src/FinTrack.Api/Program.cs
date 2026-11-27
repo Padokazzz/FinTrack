@@ -4,6 +4,7 @@ using FinTrack.Infrastructure.Privacy;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.StaticFiles;
 using FinTrack.Api.Extensions;
 using FinTrack.Infrastructure.Extensions;
 using FinTrack.Application.Extensions;
@@ -52,6 +53,7 @@ if (emailVerification.InactiveDays < 1 || emailVerification.VerifyEveryDays is <
     throw new InvalidOperationException("Configure email verification and a secure SMTP relay.");
 
 builder.Services.Configure<EmailVerificationSettings>(builder.Configuration.GetSection("EmailVerification"));
+builder.Services.AddScoped<PasswordRecoveryService>();
 builder.Services.AddHttpClient<EmailVerificationService>(client => client.Timeout = TimeSpan.FromSeconds(15))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 
@@ -76,7 +78,7 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("auth-privacy", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    foreach (var (name, permits) in new[] { ("auth-login", 10), ("auth-register", 5), ("auth-session", 30), ("auth-email", 15) })
+    foreach (var (name, permits) in new[] { ("auth-login", 10), ("auth-register", 5), ("auth-session", 30), ("auth-email", 15), ("auth-recovery-request", 5), ("auth-recovery-reset", 15) })
     {
         options.AddPolicy(name, context => limitAuth
             ? RateLimitPartition.GetSlidingWindowLimiter(
@@ -202,6 +204,49 @@ if (app.Environment.IsDevelopment())
 if (!builder.Configuration.GetValue<bool>("ReverseProxy:EnforcesHttps"))
     app.UseHttpsRedirection();
 
+var serveWeb = builder.Configuration.GetValue<bool>("Web:ServeStatic");
+if (serveWeb)
+{
+    var index = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "index.html");
+    if (!File.Exists(index))
+        throw new InvalidOperationException("The FinTrack web build is missing.");
+
+    app.Use(async (context, next) =>
+    {
+        context.Response.Headers.ContentSecurityPolicy =
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+        context.Response.Headers.XContentTypeOptions = "nosniff";
+        context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        await next();
+    });
+
+    var contentTypes = new FileExtensionContentTypeProvider();
+    contentTypes.Mappings[".webmanifest"] = "application/manifest+json";
+    app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api"), web =>
+        web.UseStaticFiles(new StaticFileOptions
+        {
+            ContentTypeProvider = contentTypes,
+            OnPrepareResponse = context =>
+            {
+                if (context.File.Name == "index.html")
+                    context.Context.Response.Headers.CacheControl = "no-cache";
+            }
+        }));
+
+    app.MapFallback(async context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        context.Response.Headers.CacheControl = "no-cache";
+        await context.Response.SendFileAsync(index, context.RequestAborted);
+    }).WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
+}
+
 app.UseRouting();
 
 app.UseCors(FrontendCorsPolicy);
@@ -210,6 +255,7 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapControllers();
 
 app.Run();

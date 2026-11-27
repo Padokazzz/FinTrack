@@ -16,7 +16,8 @@ public class RegisterRequestValidatorTests
         {
             Name = "",
             Email = "john@example.com",
-            Password = "123456"
+            Password = "123456",
+            ConfirmPassword = "123456"
         };
 
         var result = _validator.TestValidate(request);
@@ -31,7 +32,8 @@ public class RegisterRequestValidatorTests
         {
             Name = "John Doe",
             Email = "invalid-email",
-            Password = "123456"
+            Password = "123456",
+            ConfirmPassword = "123456"
         };
 
         var result = _validator.TestValidate(request);
@@ -46,12 +48,26 @@ public class RegisterRequestValidatorTests
         {
             Name = "John Doe",
             Email = "john@example.com",
-            Password = "123"
+            Password = "123",
+            ConfirmPassword = "123"
         };
 
         var result = _validator.TestValidate(request);
 
         result.ShouldHaveValidationErrorFor(x => x.Password);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("different")]
+    public void Validate_ShouldRejectMissingOrMismatchedConfirmation(string confirmation)
+    {
+        var request = new RegisterRequest
+        {
+            Name = "John Doe", Email = "john@example.com", Password = "123456",
+            ConfirmPassword = confirmation
+        };
+        _validator.TestValidate(request).ShouldHaveValidationErrorFor(x => x.ConfirmPassword);
     }
 
     [Fact]
@@ -61,7 +77,8 @@ public class RegisterRequestValidatorTests
         {
             Name = "John Doe",
             Email = "john@example.com",
-            Password = "123456"
+            Password = "123456",
+            ConfirmPassword = "123456"
         };
 
         var result = _validator.TestValidate(request);

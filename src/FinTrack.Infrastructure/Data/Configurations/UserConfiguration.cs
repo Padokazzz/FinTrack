@@ -9,6 +9,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     public void Configure(EntityTypeBuilder<User> builder)
     {
         builder.ToTable("Users");
+        builder.HasIndex(x => x.PasswordResetId).IsUnique();
+        builder.Property(x => x.PasswordResetHash).HasMaxLength(64);
 
         builder.HasKey(user => user.Id);
 

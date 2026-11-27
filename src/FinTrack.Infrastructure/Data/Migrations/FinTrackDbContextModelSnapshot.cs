@@ -228,6 +228,9 @@ namespace FinTrack.Infrastructure.Data.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("PasswordVersion")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -382,12 +385,31 @@ namespace FinTrack.Infrastructure.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<int>("PasswordResetAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PasswordResetHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("PasswordResetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PasswordResetSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PasswordVersion")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("PasswordResetId")
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);

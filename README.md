@@ -314,3 +314,70 @@ Em desenvolvimento, é possível gravar mensagens de teste em uma pasta local co
 `EmailVerification__PickupDirectory` e um remetente fictício. O Compose de
 desenvolvimento desativa a confirmação por padrão para preservar os fluxos de
 teste sem remetente. Aplique a migração de e-mail antes do deploy.
+
+### Empacotar o piloto no Render
+
+Use a API com as migrações de privacidade e e-mail e o frontend integrado
+na `main`. A imagem do piloto serve o React e `/api` na mesma origem.
+A partir do diretório que contém `fintrack-api` e `fintrack-web`:
+
+```bash
+web_src=$(mktemp -d)
+git -C fintrack-web archive origin/main | tar -x -C "$web_src"
+docker buildx build --platform linux/amd64 --load \
+  --build-context fintrack-web="$web_src" \
+  --build-arg VITE_PRIVACY_CONTROLLER="NOME DO RESPONSÁVEL" \
+  --build-arg VITE_PRIVACY_CONTACT="CONTATO DE PRIVACIDADE" \
+  -f fintrack-api/Dockerfile.pilot -t fintrack-pilot:0.1.0 fintrack-api
+```
+
+Os argumentos acima são informações públicas. Guarde os segredos apenas
+nas variáveis de execução do serviço. Depois de aplicar as migrações EF
+no projeto Supabase de teste, execute `deploy/runtime-role.sql` com
+`psql -v ON_ERROR_STOP=1 -f deploy/runtime-role.sql` por uma conexão
+administrativa. O script cria a credencial de execução e pede a senha no terminal.
+
+No Render, use **Web Service → Existing Image → Free** e a imagem publicada
+em um registro Docker. Configure a porta 8080 e o health check `/health`.
+Defina `AllowedHosts` com o hostname atribuído, `ReverseProxy__EnforcesHttps=true`,
+`Database__ApplyMigrationsOnStartup=false`, as variáveis JWT e de e-mail
+documentadas acima, e `ConnectionStrings__DefaultConnection` usando
+`fintrack_runtime.<project-ref>` no pooler de sessão do Supabase. Para
+`SSL Mode=VerifyFull`, configure a CA do endpoint como arquivo no Render
+e aponte `Root Certificate` para o caminho em `/etc/secrets/`.
+
+### Conectar ao Neon
+
+A API aceita a variável de servidor `DATABASE_URL` gerada pelo Neon. O
+Npgsql valida o certificado e o hostname do servidor. Uma configuração
+explícita em `ConnectionStrings__DefaultConnection` tem prioridade.
+
+Depois de inicializar o projeto e rodar `neon deploy` no workspace que
+contém os dois repositórios, execute os comandos da API a partir de
+`fintrack-api` usando o arquivo local gerado pela CLI:
+
+```bash
+node deploy/with-neon-env.mjs dotnet run --project src/FinTrack.Api
+```
+
+O launcher também usa `.env.fintrack.local` se contiver `FINTRACK_DATABASE_URL`
+com a credencial restrita. Configure as demais variáveis da API conforme
+a seção do piloto. Use a
+conexão direta e a credencial de migração para alterações de esquema.
+No Render, mantenha a conexão em um segredo do backend e use um papel
+de execução restrito. Evite copiar o arquivo de ambiente para o frontend.
+
+### Recuperação de senha
+
+O cadastro exige `password` e `confirmPassword` iguais. Publique a API e o
+frontend atualizados juntos. Antes de iniciar a nova versão, aplique a
+migração `AddPasswordRecovery`; ela utiliza as tabelas existentes e mantém
+os logins das contas já cadastradas.
+
+A recuperação usa o mesmo remetente e as mesmas configurações Brevo/SMTP
+da verificação de e-mail. `POST /api/auth/forgot-password` retorna a mesma
+resposta `202` para endereços cadastrados ou desconhecidos.
+`POST /api/auth/reset-password` recebe o desafio, o código de seis dígitos e
+a nova senha confirmada. O código tem uso único, expira em dez minutos e
+permite cinco tentativas. Solicite um novo código após um minuto.
+A redefinição encerra as sessões antigas, inclusive tokens de acesso já emitidos.

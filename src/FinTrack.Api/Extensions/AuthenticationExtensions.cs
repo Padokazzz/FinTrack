@@ -27,8 +27,10 @@ public static class AuthenticationExtensions
                     {
                         var db = context.HttpContext.RequestServices.GetRequiredService<FinTrackDbContext>();
                         var verification = context.HttpContext.RequestServices.GetRequiredService<EmailVerificationService>();
+                        var claim = context.Principal?.FindFirstValue("pwd_version");
+                        Guid? version = Guid.TryParseExact(claim, "N", out var parsed) ? parsed : null;
                         if (!Guid.TryParse(context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ||
-                            !await db.Users.AnyAsync(x => x.Id == id, context.HttpContext.RequestAborted) ||
+                            !await db.Users.AnyAsync(x => x.Id == id && x.PasswordVersion == version, context.HttpContext.RequestAborted) ||
                             !await verification.AcceptSessionAsync(id, touch: false, context.HttpContext.RequestAborted))
                             context.Fail("Session verification is required.");
                     }

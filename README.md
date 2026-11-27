@@ -1,26 +1,25 @@
 # FinTrack API
 
-API REST para uma aplicação de gestão financeira pessoal, desenvolvida com **C# e ASP.NET Core 10**. O backend concentra as regras de negócio e a persistência de contas, categorias, transações e resumos financeiros.
+API REST em **ASP.NET Core 10** e **PostgreSQL** para o FinTrack. O piloto publicado usa Render para servir a API e o frontend React na mesma origem HTTPS, com o banco no Neon.
 
-O projeto foi estruturado para demonstrar práticas de desenvolvimento backend: separação de responsabilidades, autenticação, autorização por usuário, validação de entrada, acesso a dados com Entity Framework Core e testes automatizados.
+[Abrir o FinTrack](https://fintrack.thecodefy.com/) · [Health check](https://fintrack.thecodefy.com/health) · [Repositório do frontend](https://github.com/Padokazzz/fintrack-web) · [Aviso de privacidade](https://fintrack.thecodefy.com/privacy)
 
-> **Status:** projeto em desenvolvimento. O escopo implementado e os próximos passos estão indicados neste README.
+## Documentação da API
 
-**Frontend relacionado:** [FinTrack Web](https://github.com/Padokazzz/fintrack-web)
+Com a API local em execução no ambiente de desenvolvimento, abra o [Swagger local](http://localhost:8080/swagger/index.html) para consultar os contratos e testar os endpoints.
+
+![Swagger local do FinTrack com rotas de recorrências, amortizações e relatórios](docs/images/swagger-local.png)
 
 ## Funcionalidades
 
-- Cadastro e autenticação de usuários com JWT e renovação por cookie HttpOnly.
-- Operações de criação, consulta, atualização e remoção de contas financeiras.
-- Gerenciamento de categorias de receitas e despesas.
-- Registro e consulta de transações.
-- Transferências entre contas com reversão ao excluir.
-- Recorrências mensais automáticas ou com confirmação e agenda de 30 dias.
-- Filtros de transações por mês, ano, tipo e categoria.
-- Resumo mensal, detalhamento por categoria e exportação de transações em CSV.
-- Documentação interativa dos endpoints com Swagger / OpenAPI.
-
-Os dados financeiros são associados ao usuário autenticado. O identificador do usuário deve ser obtido a partir das claims de autenticação, e não confiado ao conteúdo enviado pelo cliente.
+- Cadastro com confirmação de senha, verificação por e-mail e recuperação de senha por código.
+- Autenticação JWT com renovação por cookie HttpOnly e isolamento dos registros por usuário.
+- Contas, cartões vinculados e cálculo de limite usado e disponível.
+- Categorias, lançamentos paginados, filtros e transferências com reversão.
+- Recorrências mensais com forma de pagamento, confirmação manual, edição de parcelas futuras e agenda de 30 dias.
+- Amortizações por valor ou parcelas finais, economia acumulada por dívida e verificação de integridade HMAC-SHA256 do histórico.
+- Resumo semanal, limites mensais, relatórios por categoria e exportação CSV.
+- Exportação ou exclusão do cadastro mediante confirmação da senha.
 
 ## Tecnologias
 
@@ -198,7 +197,14 @@ FINTRACK_TEST_URL=http://127.0.0.1:8080 python3 tests/integration/test_transfers
 | Cadastro | `POST /api/auth/register` |
 | Login | `POST /api/auth/login` |
 | Renovação e encerramento de sessão | `POST /api/auth/refresh` e `POST /api/auth/logout` |
-| Contas | `GET, POST, PUT, DELETE /api/accounts` |
+| Contas e cartões | `GET, POST /api/accounts` e `GET, PUT, DELETE /api/accounts/{id}` |
+| Recorrências | `GET, POST /api/recurrences` e `PUT, PATCH, DELETE /api/recurrences/{id}` |
+| Agenda | `GET /api/recurrences/agenda` |
+| Confirmar parcela | `POST /api/recurrences/{id}/occurrences/{date}/confirm` |
+| Amortizações | `GET, POST /api/recurrences/{id}/amortizations` |
+| Economia da amortização | `PUT /api/recurrences/{id}/amortizations/{amortizationId}/comparison` |
+| Resumo semanal e limites | `GET /api/insights` e `PUT /api/insights/limits` |
+| Recuperação de senha | `POST /api/auth/forgot-password` e `POST /api/auth/reset-password` |
 | Categorias | `GET, POST, PUT, DELETE /api/categories` |
 | Transações | `GET, POST, PUT, DELETE /api/transactions` |
 | Histórico paginado | `GET /api/transactions/page` e `GET /api/transfers/page` |
@@ -220,7 +226,7 @@ A API retorna `409 Conflict` ao detectar uma alteração concorrente ou ao tenta
 
 ## Sessões e relatórios
 
-Cadastro e login devolvem o JWT e configuram um cookie de renovação HttpOnly. O frontend envia credenciais nas chamadas de autenticação. Para renovar ou encerrar uma sessão, envie o cookie e o cabeçalho `X-FinTrack-Session: 1`. Cada renovação troca o segredo do cookie e a sessão vence 30 dias após a criação. O logout revoga a renovação. Os JWTs emitidos seguem seu prazo normal de validade.
+Com verificação de e-mail ativa, cadastro e login podem retornar um desafio. Após a confirmação, a API devolve o JWT e configura o cookie de renovação HttpOnly. O frontend envia credenciais nas chamadas de autenticação. Para renovar ou encerrar uma sessão, envie o cookie e o cabeçalho `X-FinTrack-Session: 1`. Cada renovação troca o segredo do cookie e a sessão vence 30 dias após a criação. O logout revoga a renovação. Os JWTs emitidos seguem seu prazo normal de validade.
 
 Em desenvolvimento, o CORS aceita `http://localhost:5173`. Configure origens explícitas com `Cors__Origins__0`, `Cors__Origins__1` e assim por diante quando precisar de outros endereços.
 
@@ -232,35 +238,16 @@ O relatório soma transações do usuário autenticado por categoria e tipo. O C
 - `GET /api/recurrences/agenda` mostra ocorrências pendentes, previsões para os próximos 30 dias e os saldos projetados por conta.
 - `POST /api/recurrences/{id}/occurrences/{date}/confirm` registra uma ocorrência manual com o valor real. Repetir a confirmação da mesma ocorrência não duplica o lançamento.
 - `PATCH /api/recurrences/{id}`, com `paused`, pausa ou retoma. A retomada pula as datas perdidas durante a pausa. Pendências que já foram criadas continuam disponíveis.
-- `DELETE /api/recurrences/{id}` exclui a regra e as ocorrências pendentes. Lançamentos registrados permanecem no histórico.
+- `PUT /api/recurrences/{id}` altera as próximas parcelas. As ocorrências geradas preservam seus dados originais.
+- `DELETE /api/recurrences/{id}` exclui regras sem amortizações e suas ocorrências pendentes. Agendamentos com histórico de amortização podem ser pausados. Lançamentos registrados permanecem no extrato.
 
 A primeira data define o dia mensal. Meses mais curtos usam o último dia e os demais voltam ao dia original. O processamento recupera ocorrências vencidas enquanto a API estava desligada. O fuso padrão é `America/Sao_Paulo` e pode ser definido com `Recurrences__TimeZone`. O modo automático registra no FinTrack. Débitos e créditos bancários dependem dos serviços do banco.
 
-A migração `AddMonthlyRecurrences` cria as tabelas de regras e ocorrências. O Docker aplica as migrações na inicialização. A suíte de integração cobre recuperação de meses vencidos, confirmação concorrente, isolamento entre usuários, projeção de saldo, pausa e retomada.
+Empréstimos e financiamentos usam o mesmo fluxo. A data final encerra as parcelas, e o débito automático exige conta corrente ou poupança. Uma amortização com parcelas abatidas reduz o prazo. A economia compara o total das parcelas restantes antes da amortização com o valor pago mais as parcelas restantes depois. Esse histórico fica separado dos lançamentos de caixa.
 
-## Segurança considerada no projeto
+## Segurança
 
-- Autenticação por JWT para endpoints protegidos.
-- Associação dos registros financeiros ao usuário autenticado.
-- Validação de entrada antes da execução dos casos de uso.
-- Segredos e credenciais mantidos fora do controle de versão.
-- Separação entre regras de negócio e detalhes de infraestrutura.
-
-## Próximos passos
-
-- [x] Configurar CI com GitHub Actions.
-- [x] Ampliar a cobertura com testes de integração.
-- [x] Implementar refresh tokens.
-- [x] Evoluir relatórios e exportação de dados.
-- [ ] Preparar implantação em ambiente cloud.
-
-## Repositórios relacionados
-
-- [FinTrack Web](https://github.com/Padokazzz/fintrack-web): interface React que consome esta API.
-
----
-
-Desenvolvido por [Leonardo Padilha](https://www.leonardopadilha.com) como projeto de portfólio com foco em engenharia backend e desenvolvimento de APIs.
+A API verifica a assinatura do histórico de amortizações antes de consultar, atualizar ou exportar os dados. Divergências retornam `409 Conflict`. Consulte a configuração do piloto para a chave externa ao banco e a inicialização de históricos existentes.
 
 ## Configuração segura do piloto
 
@@ -270,7 +257,7 @@ Desenvolvido por [Leonardo Padilha](https://www.leonardopadilha.com) como projet
 - O HMAC detecta alterações, inserções e remoções de amortizações em um agendamento preservado. Uma cópia antiga do banco com assinaturas válidas ou a exclusão do agendamento completo exige uma fonte de auditoria externa para detecção.
 - Use o site e a API na mesma origem pública HTTPS, com chamadas relativas a `/api`. Se o ingresso redirecionar HTTP para HTTPS, defina `ReverseProxy__EnforcesHttps=true`. Se ele informar o IP do visitante, configure somente os endereços conhecidos do proxy em `ReverseProxy__KnownProxies__0`, `ReverseProxy__KnownProxies__1` etc. O proxy precisa substituir os cabeçalhos encaminhados. Sem proxies confiáveis, o limite da aplicação usa o IP da conexão. Quando o ingresso usa endereços variáveis, aplique também a limitação por cliente no próprio ingresso.
 - A API limita cadastro a 5, login a 10 e renovação/saída a 30 requisições por minuto por IP em produção. Para testar essa proteção fora de produção, defina `Security__LimitAuthRequests=true`.
-- Use o Supabase como PostgreSQL, com a Data API desativada para o projeto do piloto. Configure TLS com verificação de certificado e hostname (`SSL Mode=VerifyFull`) e forneça a CA exigida pelo endpoint. Se o host usar IPv4, use o pooler em modo sessão na porta 5432.
+- Use a credencial restrita do Neon na execução da API. Reserve a conexão direta e o papel de migração para alterações de esquema. Use TLS com validação de certificado e hostname.
 - Mantenha `Database__ApplyMigrationsOnStartup=false`. Aplique as migrações antes de iniciar a API, usando a credencial de migração em um ambiente autorizado. Por exemplo, com o projeto e a ferramenta EF disponíveis:
 
   ```bash
@@ -320,34 +307,24 @@ teste sem remetente. Aplique a migração de e-mail antes do deploy.
 
 ### Empacotar o piloto no Render
 
-Use a API com as migrações de privacidade e e-mail e o frontend integrado
-na `main`. A imagem do piloto serve o React e `/api` na mesma origem.
+A imagem do piloto serve o React e `/api` na mesma origem. Use revisões compatíveis de ambos os repositórios.
 A partir do diretório que contém `fintrack-api` e `fintrack-web`:
 
 ```bash
 web_src=$(mktemp -d)
-git -C fintrack-web archive origin/main | tar -x -C "$web_src"
+git -C fintrack-web archive HEAD | tar -x -C "$web_src"
 docker buildx build --platform linux/amd64 --load \
   --build-context fintrack-web="$web_src" \
   --build-arg VITE_PRIVACY_CONTROLLER="NOME DO RESPONSÁVEL" \
   --build-arg VITE_PRIVACY_CONTACT="CONTATO DE PRIVACIDADE" \
-  -f fintrack-api/Dockerfile.pilot -t fintrack-pilot:0.1.0 fintrack-api
+  -f fintrack-api/Dockerfile.pilot -t ghcr.io/padokazzz/fintrack-pilot:0.3.0 fintrack-api
 ```
 
-Os argumentos acima são informações públicas. Guarde os segredos apenas
-nas variáveis de execução do serviço. Depois de aplicar as migrações EF
-no projeto Supabase de teste, execute `deploy/runtime-role.sql` com
-`psql -v ON_ERROR_STOP=1 -f deploy/runtime-role.sql` por uma conexão
-administrativa. O script cria a credencial de execução e pede a senha no terminal.
+Os argumentos de build são informações públicas. Publique a imagem no GHCR e aponte o serviço do Render para a tag publicada. Configure a porta 8080 e o health check `/health`. Defina `AllowedHosts`, `ReverseProxy__EnforcesHttps=true`, `Database__ApplyMigrationsOnStartup=false`, as variáveis JWT, a chave HMAC e o remetente de verificação.
 
-No Render, use **Web Service → Existing Image → Free** e a imagem publicada
-em um registro Docker. Configure a porta 8080 e o health check `/health`.
-Defina `AllowedHosts` com o hostname atribuído, `ReverseProxy__EnforcesHttps=true`,
-`Database__ApplyMigrationsOnStartup=false`, as variáveis JWT e de e-mail
-documentadas acima, e `ConnectionStrings__DefaultConnection` usando
-`fintrack_runtime.<project-ref>` no pooler de sessão do Supabase. Para
-`SSL Mode=VerifyFull`, configure a CA do endpoint como arquivo no Render
-e aponte `Root Certificate` para o caminho em `/etc/secrets/`.
+Em produção, a API usa o papel `fintrack_runtime`. Ao introduzir tabelas, conceda apenas os privilégios exigidos pela aplicação. Na tabela `"RecurrenceAmortizations"`, o papel precisa de `SELECT`, `INSERT` e `UPDATE`.
+
+[Deploy de imagens no Render](https://render.com/docs/deploying-an-image) · [Conexões com o PostgreSQL no Neon](https://neon.com/docs/connect/connect-from-any-app)
 
 ### Conectar ao Neon
 
@@ -384,3 +361,7 @@ resposta `202` para endereços cadastrados ou desconhecidos.
 a nova senha confirmada. O código tem uso único, expira em dez minutos e
 permite cinco tentativas. Solicite um novo código após um minuto.
 A redefinição encerra as sessões antigas, inclusive tokens de acesso já emitidos.
+
+---
+
+Desenvolvido por [Leonardo Padilha](https://www.leonardopadilha.com).

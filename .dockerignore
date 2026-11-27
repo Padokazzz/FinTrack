@@ -12,3 +12,6 @@ src/FinTrack.Api/appsettings.Development.json
 *.suo
 .vs/
 .vscode/
+
+**/.env
+**/.env.*

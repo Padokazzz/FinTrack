@@ -2,17 +2,20 @@ using FinTrack.Application.DTOs.Auth;
 using FinTrack.Application.Interfaces.Services;
 using FinTrack.Infrastructure.Authentication;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace FinTrack.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class AuthController(IAuthService authService, RefreshSessionService sessions, IWebHostEnvironment environment) : ControllerBase
 {
     private const string RefreshCookieName = "fintrack_refresh";
 
     [HttpPost("register")]
+    [EnableRateLimiting("auth-register")]
     public async Task<IActionResult> Register(
         RegisterRequest request,
         CancellationToken cancellationToken)
@@ -29,6 +32,7 @@ public class AuthController(IAuthService authService, RefreshSessionService sess
     }
 
     [HttpPost("login")]
+    [EnableRateLimiting("auth-login")]
     public async Task<IActionResult> Login(
         LoginRequest request,
         CancellationToken cancellationToken)
@@ -44,6 +48,7 @@ public class AuthController(IAuthService authService, RefreshSessionService sess
         return Ok(result.Value);
     }
     [HttpPost("refresh")]
+    [EnableRateLimiting("auth-session")]
     public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
     {
         if (!Request.Headers.ContainsKey("X-FinTrack-Session")) return BadRequest();
@@ -66,6 +71,7 @@ public class AuthController(IAuthService authService, RefreshSessionService sess
     }
 
     [HttpPost("logout")]
+    [EnableRateLimiting("auth-session")]
     public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         if (!Request.Headers.ContainsKey("X-FinTrack-Session")) return BadRequest();

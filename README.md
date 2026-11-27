@@ -261,3 +261,18 @@ A migração `AddMonthlyRecurrences` cria as tabelas de regras e ocorrências. O
 ---
 
 Desenvolvido por [Leonardo Padilha](https://www.leonardopadilha.com) como projeto de portfólio com foco em engenharia backend e desenvolvimento de APIs.
+
+## Configuração segura do piloto
+
+- Execute a API em `Production`. Defina `AllowedHosts` com o hostname público, `Jwt__Issuer`, `Jwt__Audience` e `Jwt__ExpirationMinutes=15`. Gere um segredo aleatório com `openssl rand -hex 32` e armazene-o como `Jwt__Secret` no serviço.
+- Use o site e a API na mesma origem pública HTTPS, com chamadas relativas a `/api`. Se o ingresso redirecionar HTTP para HTTPS, defina `ReverseProxy__EnforcesHttps=true`. Se ele informar o IP do visitante, configure somente os endereços conhecidos do proxy em `ReverseProxy__KnownProxies__0`, `ReverseProxy__KnownProxies__1` etc. O proxy precisa substituir os cabeçalhos encaminhados. Sem proxies confiáveis, o limite da aplicação usa o IP da conexão. Quando o ingresso usa endereços variáveis, aplique também a limitação por cliente no próprio ingresso.
+- A API limita cadastro a 5, login a 10 e renovação/saída a 30 requisições por minuto por IP em produção. Para testar essa proteção fora de produção, defina `Security__LimitAuthRequests=true`.
+- Use o Supabase como PostgreSQL, com a Data API desativada para o projeto do piloto. Configure TLS com verificação de certificado e hostname (`SSL Mode=VerifyFull`) e forneça a CA exigida pelo endpoint. Se o host usar IPv4, use o pooler em modo sessão na porta 5432.
+- Mantenha `Database__ApplyMigrationsOnStartup=false`. Aplique as migrações antes de iniciar a API, usando a credencial de migração em um ambiente autorizado. Por exemplo, com o projeto e a ferramenta EF disponíveis:
+
+  ```bash
+  ASPNETCORE_ENVIRONMENT=Development Database__ApplyMigrationsOnStartup=false \
+    dotnet ef database update --project src/FinTrack.Infrastructure --startup-project src/FinTrack.Api
+  ```
+
+  Forneça a conexão de migração pelo ambiente do comando, sem incluí-la no histórico do shell. Na API em execução, `ConnectionStrings__DefaultConnection` deve usar uma credencial diferente, com acesso apenas às tabelas e sequências da aplicação, sem permissões de criação ou alteração de esquema.

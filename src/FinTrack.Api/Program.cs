@@ -1,3 +1,7 @@
+using System.Net;
+using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using FinTrack.Api.Extensions;
 using FinTrack.Infrastructure.Extensions;
 using FinTrack.Application.Extensions;
@@ -18,6 +22,57 @@ using FinTrack.Infrastructure.Authentication;
 var builder = WebApplication.CreateBuilder(args);
 
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
+
+if (builder.Environment.IsProduction())
+{
+    var jwt = builder.Configuration.GetSection("Jwt").Get<JwtSettings>();
+    if (jwt is null || string.IsNullOrWhiteSpace(jwt.Issuer) || string.IsNullOrWhiteSpace(jwt.Audience) ||
+        string.IsNullOrWhiteSpace(jwt.Secret) || Encoding.UTF8.GetByteCount(jwt.Secret) < 32 ||
+        jwt.Secret.StartsWith("CHANGE_THIS", StringComparison.OrdinalIgnoreCase) ||
+        jwt.ExpirationMinutes is < 1 or > 15)
+        throw new InvalidOperationException("Configure a strong JWT secret, issuer, audience and a lifetime of 1 to 15 minutes.");
+
+    var hosts = builder.Configuration["AllowedHosts"] ?? "";
+    if (string.IsNullOrWhiteSpace(hosts) || hosts.Split(';', StringSplitOptions.TrimEntries).Contains("*"))
+        throw new InvalidOperationException("Configure the public AllowedHosts in production.");
+
+    if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
+        throw new InvalidOperationException("Run database migrations separately in production.");
+}
+
+var trustedProxies = builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [];
+if (trustedProxies.Length > 0)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+        foreach (var proxy in trustedProxies)
+            options.KnownProxies.Add(IPAddress.Parse(proxy));
+    });
+}
+
+var limitAuth = builder.Environment.IsProduction() ||
+    builder.Configuration.GetValue<bool>("Security:LimitAuthRequests");
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    foreach (var (name, permits) in new[] { ("auth-login", 10), ("auth-register", 5), ("auth-session", 30) })
+    {
+        options.AddPolicy(name, context => limitAuth
+            ? RateLimitPartition.GetSlidingWindowLimiter(
+                (name, context.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown"),
+                _ => new SlidingWindowRateLimiterOptions
+                {
+                    PermitLimit = permits,
+                    Window = TimeSpan.FromMinutes(1),
+                    SegmentsPerWindow = 6,
+                    QueueLimit = 0
+                })
+            : RateLimitPartition.GetNoLimiter((name, "development")));
+    }
+});
 
 builder.Services.AddApplication();
 
@@ -113,6 +168,9 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
     dbContext.Database.Migrate();
 }
 
+if (trustedProxies.Length > 0)
+    app.UseForwardedHeaders();
+
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (app.Environment.IsDevelopment())
@@ -121,10 +179,15 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// The ingress must enforce HTTPS when application redirection is disabled.
+if (!builder.Configuration.GetValue<bool>("ReverseProxy:EnforcesHttps"))
+    app.UseHttpsRedirection();
+
+app.UseRouting();
 
 app.UseCors(FrontendCorsPolicy);
 
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

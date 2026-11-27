@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Claims;
+using FinTrack.Infrastructure.Privacy;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -40,6 +42,19 @@ if (builder.Environment.IsProduction())
         throw new InvalidOperationException("Run database migrations separately in production.");
 }
 
+var emailVerification = builder.Configuration.GetSection("EmailVerification").Get<EmailVerificationSettings>() ?? new();
+if (emailVerification.InactiveDays < 1 || emailVerification.VerifyEveryDays is < 1 or > 365 ||
+    emailVerification.InactiveDays > emailVerification.VerifyEveryDays ||
+    (!builder.Environment.IsDevelopment() && (!emailVerification.Enabled ||
+        (string.IsNullOrWhiteSpace(emailVerification.Host) && string.IsNullOrWhiteSpace(emailVerification.BrevoApiKey)) ||
+        string.IsNullOrWhiteSpace(emailVerification.From) ||
+        !string.IsNullOrEmpty(emailVerification.PickupDirectory))))
+    throw new InvalidOperationException("Configure email verification and a secure SMTP relay.");
+
+builder.Services.Configure<EmailVerificationSettings>(builder.Configuration.GetSection("EmailVerification"));
+builder.Services.AddHttpClient<EmailVerificationService>(client => client.Timeout = TimeSpan.FromSeconds(15))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+
 var trustedProxies = builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [];
 if (trustedProxies.Length > 0)
 {
@@ -58,7 +73,10 @@ var limitAuth = builder.Environment.IsProduction() ||
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    foreach (var (name, permits) in new[] { ("auth-login", 10), ("auth-register", 5), ("auth-session", 30) })
+    options.AddPolicy("auth-privacy", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    foreach (var (name, permits) in new[] { ("auth-login", 10), ("auth-register", 5), ("auth-session", 30), ("auth-email", 15) })
     {
         options.AddPolicy(name, context => limitAuth
             ? RateLimitPartition.GetSlidingWindowLimiter(
@@ -85,6 +103,7 @@ builder.Services.AddScoped<RecurrenceService>();
 builder.Services.AddScoped<IRecurrenceService>(services => services.GetRequiredService<RecurrenceService>());
 builder.Services.AddHostedService<RecurrenceWorker>();
 builder.Services.AddScoped<RefreshSessionService>();
+builder.Services.AddScoped<PrivacyService>();
 builder.Services.AddJwtAuthentication(builder.Configuration);
 
 builder.Services.AddCors(options =>
@@ -187,8 +206,8 @@ app.UseRouting();
 
 app.UseCors(FrontendCorsPolicy);
 
-app.UseRateLimiter();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();

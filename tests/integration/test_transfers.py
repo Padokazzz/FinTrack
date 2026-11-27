@@ -212,6 +212,52 @@ class FinancialIntegrationTests(unittest.TestCase):
         self.assertEqual(session_request("logout", cookie=rotated)[0], 204)
         self.assertEqual(session_request("refresh", cookie=rotated)[0], 401)
 
+    def test_privacy_requires_current_password_and_only_removes_the_signed_in_profile(self):
+        credentials = self.login_credentials
+        privacy = {"password": credentials["password"]}
+        self.call("POST", "auth/privacy/export", 401, privacy)
+        self.call("POST", "auth/privacy/export", 403, {"password": "wrong"}, self.token)
+        self.call("POST", "auth/privacy/delete", 403, {"password": "wrong"}, self.token)
+
+        other = self.register()
+        other_id = self.create_account(other, "Other profile", 20)
+        today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        rule = self.recurrence_request(False, None, str(today), transaction_type=2)
+        self.call("POST", "recurrences", 201, rule, self.token)
+        self.call("POST", "transactions", 201, {
+            "description": "Privacy expense", "accountId": self.origin, "categoryId": rule["categoryId"],
+            "date": f"{today}T00:00:00Z", "type": 2, "amount": 5,
+        }, self.token)
+        self.call("POST", "transfers", 201, self.transfer, self.token)
+        self.call("PUT", "insights/limits", 204,
+                  {"overallLimit": 55, "categories": []}, self.token)
+        export = self.call("POST", "auth/privacy/export", 200, privacy, self.token)
+        self.assertEqual(export["schemaVersion"], 1)
+        self.assertEqual(export["profile"]["email"], credentials["email"])
+        self.assertNotIn("passwordHash", export["profile"])
+        self.assertCountEqual([item["id"] for item in export["accounts"]], [self.origin, self.destination])
+        for collection in ("transactions", "transfers", "recurrences"):
+            self.assertEqual(len(export[collection]), 1)
+        self.assertEqual(export["limits"]["overallLimit"], 55)
+
+        login = Request(f"{BASE_URL}/api/auth/login", json.dumps(credentials).encode(),
+                        {"Content-Type": "application/json"}, method="POST")
+        with urlopen(login, timeout=10) as response:
+            cookie = response.headers["Set-Cookie"].split(";", 1)[0]
+            second_token = json.loads(response.read())["token"]
+        self.call("POST", "auth/privacy/delete", 204, privacy, self.token)
+        self.call("GET", "accounts", 401, token=self.token)
+        self.call("GET", "accounts", 401, token=second_token)
+        refresh = Request(f"{BASE_URL}/api/auth/refresh", headers={
+            "Cookie": cookie, "X-FinTrack-Session": "1",
+        }, method="POST")
+        with self.assertRaises(HTTPError) as failure:
+            urlopen(refresh, timeout=10)
+        with failure.exception as response:
+            self.assertEqual(response.code, 401)
+        self.call("POST", "auth/login", 400, credentials)
+        self.assertEqual(self.call("GET", "accounts", 200, token=other)[0]["id"], other_id)
+
     def test_monthly_category_report_and_csv_match_the_selected_user_and_period(self):
         category = self.call("POST", "categories", 201, {"name": 'Bills, "fixed"', "type": 2}, self.token)
         now = datetime.now(timezone.utc)

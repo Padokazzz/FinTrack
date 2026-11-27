@@ -10,6 +10,8 @@ public class FinTrackDbContext : DbContext
     {
     }
 
+    public DbSet<EmailVerification> EmailVerifications => Set<EmailVerification>();
+
     public DbSet<RefreshSession> RefreshSessions => Set<RefreshSession>();
 
     public DbSet<User> Users => Set<User>();
@@ -31,6 +33,14 @@ public class FinTrackDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<EmailVerification>(entity =>
+        {
+            entity.HasKey(x => x.UserId);
+            entity.HasIndex(x => x.ChallengeId).IsUnique();
+            entity.Property(x => x.CodeHash).HasMaxLength(64);
+            entity.HasOne<User>().WithOne().HasForeignKey<EmailVerification>(x => x.UserId);
+        });
 
         modelBuilder.Entity<SpendingBudget>(entity =>
         {

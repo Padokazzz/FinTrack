@@ -33,6 +33,7 @@ services:
       Jwt__Secret: ${JWT_SECRET:-CHANGE_THIS_TO_A_LONG_SECURE_SECRET_KEY_WITH_AT_LEAST_32_CHARS}
       Jwt__ExpirationMinutes: ${JWT_EXPIRATION_MINUTES:-60}
       Database__ApplyMigrationsOnStartup: true
+      EmailVerification__Enabled: ${EMAIL_VERIFICATION_ENABLED:-false}
     ports:
       - "8080:8080"
 

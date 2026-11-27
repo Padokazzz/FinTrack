@@ -12,12 +12,12 @@ public record RefreshCookie(string Value, DateTime ExpiresAt);
 
 public class RefreshSessionService(FinTrackDbContext context, IJwtTokenGenerator jwt, TimeProvider clock, EmailVerificationService verification)
 {
-    public async Task<RefreshCookie> StartAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<RefreshCookie> StartAsync(Guid userId, Guid? passwordVersion, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         await context.RefreshSessions.Where(session => session.ExpiresAt <= now)
             .ExecuteDeleteAsync(cancellationToken);
-        var session = new RefreshSession { UserId = userId, ExpiresAt = now.AddDays(30) };
+        var session = new RefreshSession { UserId = userId, PasswordVersion = passwordVersion, ExpiresAt = now.AddDays(30) };
         var cookie = Rotate(session);
         context.RefreshSessions.Add(session);
         await context.SaveChangesAsync(cancellationToken);
@@ -66,7 +66,7 @@ public class RefreshSessionService(FinTrackDbContext context, IJwtTokenGenerator
 
         var now = clock.GetUtcNow().UtcDateTime;
         var session = await context.RefreshSessions.Include(item => item.User)
-            .SingleOrDefaultAsync(item => item.Id == id && item.ExpiresAt > now, cancellationToken);
+            .SingleOrDefaultAsync(item => item.Id == id && item.ExpiresAt > now && item.PasswordVersion == item.User.PasswordVersion, cancellationToken);
         if (session is null)
         {
             return null;

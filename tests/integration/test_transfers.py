@@ -55,7 +55,7 @@ class FinancialIntegrationTests(unittest.TestCase):
             "email": f"fintrack-ci-{secrets.token_hex(8)}@example.com",
             "password": secrets.token_urlsafe(24),
         }
-        self.call("POST", "auth/register", 200, {"name": "Integration Test", **credentials})
+        self.call("POST", "auth/register", 200, {"name": "Integration Test", "confirmPassword": credentials["password"], **credentials})
         self.last_credentials = credentials
         return self.call("POST", "auth/login", 200, credentials)["token"]
 

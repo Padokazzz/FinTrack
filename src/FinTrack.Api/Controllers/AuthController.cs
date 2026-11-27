@@ -55,15 +55,41 @@ public class AuthController(IAuthService authService, RefreshSessionService sess
     {
         var auth = await emailVerification.ConfirmAsync(request.ChallengeId, request.Code, ct);
         if (auth is null) return BadRequest(new { message = "Invalid or expired security code." });
-        SetCookie(await sessions.StartAsync(auth.UserId, ct));
+        SetCookie(await sessions.StartAsync(auth.UserId, auth.PasswordVersion, ct));
         return Ok(auth);
     }
+
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth-recovery-request")]
+    public async Task<IActionResult> ForgotPassword(RecoveryEmail request,
+        [FromServices] PasswordRecoveryService recovery, CancellationToken ct) =>
+        Accepted(new { challengeId = await recovery.RequestAsync(request.Email.Trim(), ct) });
+
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth-recovery-reset")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request,
+        [FromServices] PasswordRecoveryService recovery, CancellationToken ct)
+    {
+        if (request.Password != request.ConfirmPassword)
+            return BadRequest(new { message = "Passwords must match." });
+        if (!await recovery.ResetAsync(request.ChallengeId, request.Code, request.Password, ct))
+            return BadRequest(new { message = "Invalid or expired security code." });
+
+        Response.Cookies.Delete(RefreshCookieName, CookieSettings());
+        return NoContent();
+    }
+
+    public sealed record RecoveryEmail([Required, EmailAddress, StringLength(150)] string Email);
+    public sealed record ResetPasswordRequest(Guid ChallengeId,
+        [Required, RegularExpression("^[0-9]{6}$")] string Code,
+        [Required, StringLength(100, MinimumLength = 6)] string Password,
+        [Required, StringLength(100, MinimumLength = 6)] string ConfirmPassword);
 
     private async Task<IActionResult> CompleteOrChallengeAsync(AuthResponse auth, CancellationToken ct)
     {
         if (await emailVerification.AcceptSessionAsync(auth.UserId, touch: true, ct))
         {
-            SetCookie(await sessions.StartAsync(auth.UserId, ct));
+            SetCookie(await sessions.StartAsync(auth.UserId, auth.PasswordVersion, ct));
             return Ok(auth);
         }
 

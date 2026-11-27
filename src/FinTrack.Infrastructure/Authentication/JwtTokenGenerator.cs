@@ -29,6 +29,9 @@ public class JwtTokenGenerator : IJwtTokenGenerator
             new(ClaimTypes.Name, user.Name)
         };
 
+        if (user.PasswordVersion is Guid version)
+            claims.Add(new Claim("pwd_version", version.ToString("N")));
+
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var signingCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 

@@ -70,35 +70,7 @@ public sealed class EmailVerificationService(
         {
             const string subject = "FinTrack | Código de segurança";
             var body = $"Seu código de segurança FinTrack é {code}. Ele expira em 10 minutos. Não compartilhe esse código. Se você não o solicitou, ignore esta mensagem.";
-            if (!string.IsNullOrEmpty(settings.BrevoApiKey))
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
-                request.Headers.Add("api-key", settings.BrevoApiKey);
-                request.Content = JsonContent.Create(new
-                {
-                    sender = new { email = settings.From },
-                    to = new[] { new { email = user.Email } },
-                    subject,
-                    textContent = body
-                });
-                using var response = await http.SendAsync(request, ct);
-                response.EnsureSuccessStatusCode();
-                return challenge;
-            }
-
-            using var message = new MailMessage(settings.From, user.Email, subject, body);
-            using var client = string.IsNullOrEmpty(settings.PickupDirectory)
-                ? new SmtpClient(settings.Host, settings.Port) { EnableSsl = true }
-                : new SmtpClient
-                {
-                    DeliveryMethod = SmtpDeliveryMethod.SpecifiedPickupDirectory,
-                    PickupDirectoryLocation = settings.PickupDirectory
-                };
-            if (!string.IsNullOrEmpty(settings.Username))
-                client.Credentials = new NetworkCredential(settings.Username, settings.Password);
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            await client.SendMailAsync(message, timeout.Token);
+            await SendEmailAsync(user.Email, subject, body, ct);
         }
         catch
         {
@@ -134,7 +106,40 @@ public sealed class EmailVerificationService(
             db.EmailVerifications.Any(state => state.ChallengeId == challenge && state.UserId == x.Id), ct);
         await db.RefreshSessions.Where(x => x.UserId == user.Id).ExecuteDeleteAsync(ct);
         await transaction.CommitAsync(ct);
-        return new AuthResponse { UserId = user.Id, Email = user.Email, Name = user.Name, Token = jwt.GenerateToken(user) };
+        return new AuthResponse { UserId = user.Id, PasswordVersion = user.PasswordVersion, Email = user.Email, Name = user.Name, Token = jwt.GenerateToken(user) };
+    }
+
+    internal async Task SendEmailAsync(string email, string subject, string body, CancellationToken ct)
+    {
+        if (!string.IsNullOrEmpty(settings.BrevoApiKey))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+            request.Headers.Add("api-key", settings.BrevoApiKey);
+            request.Content = JsonContent.Create(new
+            {
+                sender = new { email = settings.From },
+                to = new[] { new { email = email } },
+                subject,
+                textContent = body
+            });
+            using var response = await http.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+            return;
+        }
+
+        using var message = new MailMessage(settings.From, email, subject, body);
+        using var client = string.IsNullOrEmpty(settings.PickupDirectory)
+            ? new SmtpClient(settings.Host, settings.Port) { EnableSsl = true }
+            : new SmtpClient
+            {
+                DeliveryMethod = SmtpDeliveryMethod.SpecifiedPickupDirectory,
+                PickupDirectoryLocation = settings.PickupDirectory
+            };
+        if (!string.IsNullOrEmpty(settings.Username))
+            client.Credentials = new NetworkCredential(settings.Username, settings.Password);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        await client.SendMailAsync(message, timeout.Token);
     }
 
     private string Hash(Guid challenge, string code) =>

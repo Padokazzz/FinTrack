@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+WORKDIR /web
+COPY --from=fintrack-web package.json package-lock.json ./
+RUN npm ci
+COPY --from=fintrack-web . .
+ARG VITE_PRIVACY_CONTROLLER
+ARG VITE_PRIVACY_CONTACT
+ENV VITE_API_BASE_URL=/api
+RUN npm run build
+
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY src/FinTrack.Api/FinTrack.Api.csproj src/FinTrack.Api/
+COPY src/FinTrack.Application/FinTrack.Application.csproj src/FinTrack.Application/
+COPY src/FinTrack.Domain/FinTrack.Domain.csproj src/FinTrack.Domain/
+COPY src/FinTrack.Infrastructure/FinTrack.Infrastructure.csproj src/FinTrack.Infrastructure/
+RUN dotnet restore src/FinTrack.Api/FinTrack.Api.csproj
+COPY src/ src/
+RUN dotnet publish src/FinTrack.Api/FinTrack.Api.csproj -c Release -o /app/publish --no-restore -p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+COPY --from=web /web/dist ./wwwroot
+ENV Web__ServeStatic=true ASPNETCORE_HTTP_PORTS=8080
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "FinTrack.Api.dll"]

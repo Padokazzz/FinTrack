@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace FinTrack.Application.DTOs.Auth;
 
 public class AuthResponse
@@ -7,6 +9,9 @@ public class AuthResponse
     public string Name { get; set; } = string.Empty;
 
     public string Email { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public Guid? PasswordVersion { get; set; }
 
     public string Token { get; set; } = string.Empty;
 }
